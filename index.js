@@ -6,7 +6,7 @@ const multer = require("multer");
 const Razorpay = require("razorpay");
 const upload = multer({ dest: "uploads/" });
 const prescriptionUpload = multer({ dest: "prescriptions/" });
-const { uploadFile } = require("./s3");
+const { uploadFile, deleteFile } = require("./s3");
 const sgMail = require('@sendgrid/mail');
 const bcrypt = require('bcryptjs');
 const { check, validationResult } = require('express-validator');
@@ -102,10 +102,10 @@ app.post("/confirmGiftPayment",async(req,res)=>{
   }
 })
 
-app.post("/addSubscriber", 
-
+app.post("/addSubscriber", [
       check("email").isEmail(),
-
+      check("name").not().isEmpty()
+    ],
       async (req, res) => {
         try{
           const errors = validationResult(req);
@@ -114,16 +114,20 @@ app.post("/addSubscriber",
             return res.status(400).json({message: errors, code: 400});
           }
           const email = req.body.email;
-          if (/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)){
-            const response = await client.query(`INSERT INTO "aptsubscribers" ("email") VALUES ($1)`, [email]);
-            if(response.rowCount === 1)
-              res.status(201).json({message: "Successfully added", code: 201});
+
+          const checkExist = await client.query(`SELECT * FROM "aptsubscribers" WHERE "email" = $1`, [email]);
+          
+          if(checkExist.rows.length > 0){
+            return res.status(200).json({code: 200, message: "Already Subscribed!"});
+          }
+          else{
+            const response = await client.query(`INSERT INTO "aptsubscribers" ("email", "name", "dateTime") 
+              VALUES ($1, $2, $3)`, [email, req.body.name, new Date()]);
+            if(response.rowCount >= 1)
+              res.status(201).json({message: "Successfully Subscribed!", code: 201});
             else{
               res.status(500).json({message: "Sever Issue, please try again later!", code: 500});
             }
-          }
-          else{
-            res.status(401).json({message: "Invalid email, enter correct email!", code: 401});
           }
         }
         catch(err){
@@ -1129,6 +1133,102 @@ app.get("/getAllBlogs", async (req, res) => {
 
 // admin panel
 
+const checkPass = async (dbpass, pass) =>{
+  const isValid = await bcrypt.compare(pass, dbpass);
+  return (isValid);
+}
+
+app.post('/admin/validate', [
+      check("email").isEmail(),
+      check("password").isLength({min: 8})
+    ], async(req, res) => {
+      try{
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+          return res.status(400).json({code: 400, message: "Invalid Credentials"});
+        }
+
+        const adminDetails = await client.query(`SELECT * FROM "aptadmin" `);
+        const email = adminDetails.rows[0].email;
+        const pass = adminDetails.rows[0].password;
+        const isValid = await checkPass(pass, req.body.password);
+        console.log(email, pass, isValid);
+
+        if(email !== req.body.email || !isValid){
+          return res.status(400).json({code: 400, message: "Invalid Credentials"});
+        }
+        else{
+          return res.status(200).json({code: 200, message: "LoggedIn Successful"});
+        }
+      }
+      catch(err){
+        console.log(err);
+        res.status(500).json({code: 500, message: "Internal Server Issue"});
+      }
+});
+
+app.post('/admin/mobileOtp', [
+      check("mobile").isNumeric().isLength({min: 10, max: 10})
+    ], async (req, res) => {
+      try{
+        
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+          return res.status(400).json({code: 400, errors, isValidPhone: false, message: "Invalid Contact Number"});
+        }
+
+        const adminDetails = await client.query(`SELECT ("mobile") FROM "aptadmin"`);
+        // console.log(adminDetails.rows[0].mobile);
+        // console.log(req.body.mobile);
+
+        if(req.body.mobile === adminDetails.rows[0].mobile){
+          // console.log("same mobile");
+          let otp = Math.floor(Math.random()*10000) + 5000;
+          const message = `Hi, Your OTP for number verification is ${otp}
+          
+APT Diagnostics`;
+          otp = await bcrypt.hash(otp.toString(), parseInt(process.env.SMS_CLIENT_HASH_SALT));
+          await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${req.body.mobile}&tempid=${process.env.SMS_CLIENT_OTP_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
+                .then(response => res.status(200).json({code: 200, result: response.data, codeData: otp, mobile: req.body.mobile, isValidPhone: true, message: "Otp sent successfully"}))
+                .catch(err => {console.log("An Error Occured - " + err), res.status(400).json({code: 400, isValidPhone: false, message: "Internal Server Issue"})});
+        }
+        else{
+          // console.log("not same mobile");
+          res.status(400).json({code: 400, isValidPhone: false, message: "Contact Number not matched!"});
+          // return res.status(400).json({code: 400, errors, isValidPhone: false, message: "Invalid Contact Number"});
+        }
+      }
+      catch(err){
+        console.log(err);
+        res.status(401).json({code: 401, message: "Internal Server Issue"});
+      }
+});
+
+app.post('/admin/updatePassword', [
+      check('password').not().isEmpty()
+    ], async (req, res) => {
+      try{
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+          return res.status(400).json({code: 400, errors, message: "Enter Password of length 8 or more"});
+        }
+
+        const data = await client.query(`UPDATE "aptadmin" SET "password" = $1`, [req.body.password]);
+        
+        if(data.rowCount > 0){
+          res.status(200).json({code: 200, message: "Password updated successfully"});
+        }
+        else{
+          res.status(500).json({code: 500, message: "Couldn't Update Password"});
+        }
+      }
+      catch(err){
+        console.log(err);
+        res.status(500).json({code: 500, message: "Internal Server Issue"});
+      }
+    }
+);
+
 app.get("/admin/dialogueBoxCheck", async (req, res) => {
   try {
     const result = await client.query(
@@ -1199,66 +1299,96 @@ app.get("/admin/getLiveHealthPackages", async (req, res) => {
 app.get("/admin/getAllPackage", async (req, res) => {
   try {
     const result = await client.query(
-      `SELECT * FROM "aptpackages"  ORDER BY "testID"`
+      `SELECT * FROM "aptpackages" ORDER BY "packageID"`
     );
-
     res.status(200).json(result.rows);
   } catch (e) {
     res.send("Internal Server Error").status(500);
   }
 });
 
-app.post("/admin/postPackage", upload.single("image"), async (req, res) => {
+app.post("/admin/postPackage", 
+          upload.single("image"), 
+          [
+            check("packageCategory").not().isEmpty(),
+            check("blogType").not().isEmpty(),
+            check("packageDescription").not().isEmpty(),
+            check("testsIncluded").not().isEmpty(),
+            check("discountedPrice").not().isEmpty(),
+            check("idealFor").not().isEmpty(),
+            check("preRequisites").not().isEmpty(),
+            check("isSpecial").isBoolean()
+          ],
+          async (req, res) => {
   try {
-    let storeImage = "";
-    if (req.file === undefined) {
-      storeImage = req.body.oldImg;
-    } else {
-      const uploadResult = await uploadFile(req.file);
-      storeImage = uploadResult.Location;
+
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      console.log(errors);
+      return res.status(400).json({code: 400, message: errors});
     }
+    // console.log(req);
     const check = await client.query(
-      `SELECT * FROM "aptpackages" WHERE "testID" = $1`,
-      [req.body.testID]
+      `SELECT * FROM "aptpackages" WHERE "packageID" = $1`, [req.body.packageID]
     );
+    // console.log(check);
+
+    let storeImage = "", result;
+    // console.log(req.file);
+    const uploadResult = await uploadFile(req.file);
+    storeImage = uploadResult.Location;
+
     if (check.rows.length < 1) {
-      const result = await client.query(
-        `INSERT INTO "aptpackages" ("testID","type","testName","description","testAmount","testsIncluded","preRequisites","idealFor","isSpecial","image") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      result = await client.query(
+        `INSERT INTO "aptpackages" ("type", "packageName", "description", "packageAmount", "discountedAmount",
+        "testsIncluded", "preRequisites", "idealFor", "packageID", "isSpecial", "image", 
+        "packageCategory", "packageCode") 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
-          req.body.testID,
-          req.body.type,
-          req.body.testName,
-          req.body.description,
-          req.body.testAmount,
+          req.body.blogType,
+          req.body.packageName,
+          req.body.packageDescription,
+          req.body.packageAmount,
+          req.body.discountedPrice,
           JSON.parse(req.body.testsIncluded),
           JSON.parse(req.body.preRequisites),
           JSON.parse(req.body.idealFor),
+          req.body.packageID,
           req.body.isSpecial,
           storeImage,
+          req.body.packageCategory,
+          req.body.packageCode
         ]
       );
-    } else {
-      const result = await client.query(
-        `UPDATE "aptpackages" SET "testID" = $1 ,"type" = $2 ,"testName" = $3 ,"description" = $4,"testAmount" = $5 ,"testsIncluded" = $6 ,"preRequisites" = $7 ,"idealFor" = $8, "isSpecial" = $9, "image"= $10 WHERE "testID" = $11`,
+    } 
+    else {
+      result = await client.query(
+        `UPDATE "aptpackages" SET "type" = $1, "packageName" = $2, "description" = $3, 
+        "packageAmount" = $4, "testsIncluded" = $5, "preRequisites" = $6, "idealFor" = $7, 
+        "isSpecial" = $8, "image"= $9, "packageCategory" = $10, "packageCode" = $11, "discountedAmount" = $12 
+        WHERE "packageID" = $13`,
         [
-          req.body.testID,
-          req.body.type,
-          req.body.testName,
-          req.body.description,
-          req.body.testAmount,
+          req.body.blogType,
+          req.body.packageName,
+          req.body.packageDescription,
+          req.body.packageAmount,
           JSON.parse(req.body.testsIncluded),
           JSON.parse(req.body.preRequisites),
           JSON.parse(req.body.idealFor),
           req.body.isSpecial,
           storeImage,
-          req.body.testID,
+          req.body.packageCategory,
+          req.body.packageCode,
+          req.body.discountedPrice,
+          req.body.packageID,
         ]
       );
     }
-    res.send(200);
+    // console.log(result.data);
+    res.status(200).json({data: result.data});
   } catch (err) {
     console.log(err);
-    res.send(500);
+    res.status(500).json({code: 500, message: err});
   }
 });
 
@@ -1347,34 +1477,38 @@ app.post("/admin/uploadTest", async (req, res) => {
   }
 });
 
-const testUpload = upload.fields([
-  { testName: "testReport", maxCount: 1 },
-  { testName: "testImage", maxCount: 1 },
-]);
-app.post("/admin/postTest", testUpload, async (req, res) => {
+app.post("/admin/postTest", 
+          upload.single("testImage"), [
+            check("testCategory").not().isEmpty(),
+            check("blogType").not().isEmpty(),
+            check("details").not().isEmpty(),
+            check("discountedAmount").not().isEmpty(),
+            check("relatedOrgan").not().isEmpty(),
+            check("isSpecial").isBoolean()
+          ], 
+          async (req, res) => {
   try {
-    let testReport = "";
-    let testImage = "";
-    if (req.files.testReport === undefined) {
-      testReport = req.body.oldTestReport;
-    } else {
-      const uploadResult = await uploadFile(req.files.testReport[0]);
-      testReport = uploadResult.Location;
-    }
-    if (req.files.testImage === undefined) {
-      testImage = req.body.oldTestImage;
-    } else {
-      const uploadResult = await uploadFile(req.files.testImage[0]);
-      testImage = uploadResult.Location;
+
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      console.log(errors);
+      return res.status(400).json({code: 400, message: errors});
     }
 
     const check = await client.query(
-      `SELECT * FROM "apttests" WHERE "testID" = $1`,
-      [req.body.testID]
+        `SELECT * FROM "apttests" WHERE "testID" = $1`, [req.body.testID]
     );
+
+    let testImage = "", result, testReport = "";
+    
+    const uploadResult = await uploadFile(req.file);
+    testImage = uploadResult.Location;
+    
     if (check.rows.length < 1) {
-      const result = await client.query(
-        `INSERT INTO "apttests" ("testID","testName","description","details","imageLink","sampleReportImage","testAmount","isSpecial","type") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      result = await client.query(
+        `INSERT INTO "apttests" ("testID", "testName", "description", "details", "imageLink", "sampleReportImage", 
+          "testAmount", "isSpecial", "type", "testCode", "testCategory", "organRelated", "discountedAmount") VALUES 
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
         [
           req.body.testID,
           req.body.testName,
@@ -1384,14 +1518,21 @@ app.post("/admin/postTest", testUpload, async (req, res) => {
           testReport,
           req.body.testAmount,
           req.body.isSpecial,
-          req.body.type,
+          req.body.blogType,
+          req.body.testCode,
+          req.body.testCategory,
+          req.body.relatedOrgan,
+          req.body.discountedAmount
         ]
       );
-    } else {
-      const result = await client.query(
-        `UPDATE "apttests" SET "testID" = $1 ,"testName" = $2 ,"description"=$3,"details"=$4,"imageLink"=$5,"sampleReportImage"=$6,"testAmount"=$7,"isSpecial"=$8,"type"=$9 WHERE "testID" = $10`,
+    } 
+    else {
+      result = await client.query(
+        `UPDATE "apttests" SET "organRelated" = $1, "testName" = $2, "description" = $3, "details" = $4, "imageLink" = $5, 
+        "sampleReportImage" = $6, "testAmount" = $7, "isSpecial" = $8, "type" = $9, "testCode" = $10, "testCategory" = $11,
+         "discountedAmount" = $12 WHERE "testID" = $13`,
         [
-          req.body.testID,
+          req.body.relatedOrgan,
           req.body.testName,
           req.body.description,
           req.body.details,
@@ -1399,123 +1540,213 @@ app.post("/admin/postTest", testUpload, async (req, res) => {
           testReport,
           req.body.testAmount,
           req.body.isSpecial,
-          req.body.type,
-          req.body.testID,
+          req.body.blogType,
+          req.body.testCode,
+          req.body.testCategory,
+          req.body.discountedAmount,
+          req.body.testID
         ]
       );
     }
-    res.send(200);
+    res.status(200).json({data: result.data});
   } catch (err) {
     console.log(err);
-    res.send(500);
+    res.status(500).json({code: 500, message: err});
   }
 });
 
 // blogs
 
-app.get("/admin/getAllBlogs", async (req,res)=>{
+app.get("/admin/getAllBlogs", async (req, res) => {
     try{
-        const result = await client.query(`SELECT * FROM "aptblogs"  ORDER BY "blogId"`)
-        res.json(result.rows)
-        
-        }
+      const result = await client.query(`SELECT * FROM "aptblogs"  ORDER BY "blogId"`);
+      res.json(result.rows).status(200);    
+    }
     catch(e){
-        console.log(e)
-        res.send("Internal Server Error").status(500)
-        }
-})
+      console.log(e);
+      res.send("Internal Server Error").status(500);
+    }
+});
 
-app.get("/admin/checkAndGetBlogById",async (req,res)=>{
+app.get("/admin/checkAndGetBlogById", async (req, res) => {
     try{
-        const result = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`,[req.query.Id])
-        if(result.rows.length ==1){
-            res.send(result.rows).status(200)
+        const result = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`, [req.query.Id]);
+        if(result.rows.length == 1){
+            console.log(result.rows[0]);
+            res.send(result.rows).status(200);
         }
         else{
-            res.send("Invalid Id").status(400)
+            res.send("Invalid Id").status(400);
         }
-        
     }
     catch(err){
         console.log(err)
-        res.send("Internal Server Error").status(500)
+        res.send("Internal Server Error").status(500);
     }
 
-})
+});
 
 //Admin - Update Blog
-const blogUpload = upload.fields([{testName:"videoFile" , maxCount:1},{testName:"images", maxCount:4}])
-app.post("/admin/postBlog",blogUpload, async (req,res)=>{
+// const blogUpload = upload.fields([{testName:"videoFile" , maxCount:1}, {testName:"images", maxCount:4}]);
+const blogUpload = upload.fields([
+  {name :"videoFile", maxCount:1}, 
+  {name :"authorImage", maxCount:1},
+  {name: "blogImage", maxCount: 1}
+]);
 
+app.post("/admin/postBlog", blogUpload, [
+            check("author").not().isEmpty(),
+            check("blogHeading").not().isEmpty(),
+            check("blogSubHeading").not().isEmpty(),
+            check("blogType").not().isEmpty(),
+            check("blogId").not().isEmpty()
+          ],
+           async (req,res) => {
     try{
-        let images =[]
-        let videoFile =""
-        let authorImage = ""
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+          return res.status(400).json({code: 400, message: errors});
+        }
+        let authorImage = "";
+        let blogImage = "";
+        let videoFile = "";
+        let content = req.body.content;
 
         // console.log(req.files)
         // console.log(req.body)
-        if(req.files !== undefined) {
+        // if(req.files !== undefined) {
             
-            if(req.files.images !== undefined){
-                for(var file of req.files.images){
-                    const result = await uploadFile(file)
-                    images.push(result.Location)
-                }
-            }
-            else{ images = JSON.parse(req.body.imagesLink)}
-            if(req.files.authorImage !== undefined){
-                const result = await uploadFile(req.files.authorImage[0])
-                authorImage = result.Location
-            }
-            else{
-                authorImage = req.body.oldAuthorImage
-            }
-            if(req.files.videoFile !== undefined){
-                const result = await uploadFile(req.files.videoFile[0])
-                videoFile = result.Location
-            }
-            else{
-                videoFile = req.body.oldVideoLink
-            }
+        //     if(req.files.images !== undefined){
+        //         for(var file of req.files.images){
+        //             const result = await uploadFile(file)
+        //             images.push(result.Location)
+        //         }
+        //     }
+        //     else{ 
+        //         images = JSON.parse(req.body.imagesLink)
+        //     }
+
+        //     if(req.files.authorImage !== undefined){
+        //         const result = await uploadFile(req.files.authorImage[0])
+        //         authorImage = result.Location
+        //     }
+        //     else{
+        //         authorImage = req.body.oldAuthorImage
+        //     }
+
+        //     if(req.files.videoFile !== undefined){
+        //         const result = await uploadFile(req.files.videoFile[0])
+        //         videoFile = result.Location
+        //     }
+        //     else{
+        //         videoFile = req.body.oldVideoLink
+        //     }
+        // }
+
+        if(req.body.isVideoBlog === 'true' && req.files.videoFile === undefined){
+          return res.status(404).json({code: 404, message: "Media Files Missing"});
         }
-        const checkExist = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`,[req.body.blogId])
-        // console.log(checkExist)
-        if(checkExist.rows.length > 0){
-            const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
-                req.body.author,
-                req.body.content,
-                req.body.blogHeading,
-                req.body.blogSubHeading,
-                authorImage,
-                req.body.isVideoBlog,
-                videoFile,
-                images,
-                req.body.blogId
-            ])
-            console.log(uploadResult.rows[0])
-            res.send(uploadResult.rows[0]).status(200)
+
+        const checkExist = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`, [req.body.blogId])
+        console.log(checkExist.rows)
+        if(checkExist.rows.length === 0){
+          return res.status(404).json({code: 404, message: "No Entry Found with this Blog ID"});
+        }
+
+        let result;
+
+        if(req.files.authorImage !== undefined){
+          result = await uploadFile(req.files.authorImage[0]);
+          authorImage = result.Location;
         }
         else{
-            const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
+          authorImage = checkExist.rows[0].authorThumbnail;
+        }
+
+        // -------------------------------------
+
+        if(req.files.blogImage !== undefined){
+          result = await uploadFile(req.files.blogImage[0]);
+          blogImage = result.Location;
+        }
+        else{
+          blogImage = checkExist.rows[0].imageLinks;
+        }
+
+        // -------------------------------------
+
+        if(req.body.isVideoBlog === 'true'){
+          result = await uploadFile(req.files.videoFile[0]);
+          videoFile = result.Location;
+        }
+        else{
+          videoFile = checkExist.rows[0].videoLink;
+        }
+
+        // -------------------------------------
+
+        if(content.length === 0){
+          content = checkExist.rows[0].content;
+        }
+
+        const uploadResult = await client.query(
+          `UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, 
+          "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, 
+          "videoLink" = $7, "imageLinks" = $8, "category" = $9, "isFeatured" = $10,
+          "updateTime" = $11 where "blogId" = $12 returning *`,[
             req.body.author,
-            req.body.content,
+            content,
             req.body.blogHeading,
             req.body.blogSubHeading,
             authorImage,
             req.body.isVideoBlog,
             videoFile,
-            images,
+            blogImage,
+            req.body.blogType,
+            req.body.blogFeatured,
+            new Date(),
             req.body.blogId
         ])
-        console.log(uploadResult.rows[0])
-        res.send(uploadResult.rows[0]).status(200)
-    }}
+
+        // console.log(uploadResult.rows[0]);
+        res.send(uploadResult.rows[0]).status(200);
+
+        // if(checkExist.rows.length > 0){
+        //     const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
+        //         req.body.author,
+        //         req.body.content,
+        //         req.body.blogHeading,
+        //         req.body.blogSubHeading,
+        //         authorImage,
+        //         req.body.isVideoBlog,
+        //         videoFile,
+        //         images,
+        //         req.body.blogId
+        //     ])
+        //     console.log(uploadResult.rows[0])
+        //     res.send(uploadResult.rows[0]).status(200)
+        // }
+        // else{
+        //     const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
+        //         req.body.author,
+        //         req.body.content,
+        //         req.body.blogHeading,
+        //         req.body.blogSubHeading,
+        //         authorImage,
+        //         req.body.isVideoBlog,
+        //         videoFile,
+        //         images,
+        //         req.body.blogId
+        //     ])
+        //     console.log(uploadResult.rows[0])
+        //     res.send(uploadResult.rows[0]).status(200)
+        // }
+    }
     catch(err){
         console.log(err)
-        res.send("Internal Server Error").status(500)
+        res.status(500).json({code: 500, message: "Internal Server Issue"});
     }
-})
-
+});
 
 app.post("quickLogin",async(req,res)=>{
   try{
@@ -1526,35 +1757,59 @@ app.post("quickLogin",async(req,res)=>{
 })
 
 //Admin- Add blog
-const insertBlogUpload = upload.fields([{testName:"videoFile" , maxCount:1},{testName:"images", maxCount:4}])
-app.post("/admin/insertBlog",insertBlogUpload, async (req,res)=>{
-    try{
-        let images =[]
-        let videoFile =""
+const insertBlogUpload = upload.fields([
+    {name :"videoFile", maxCount:1}, 
+    {name :"authorImage", maxCount:1},
+    {name: "blogImage", maxCount: 1}
+]);
 
-        if(req.files !== undefined){
-        if(req.files.images !== undefined){
-            for(var file of req.files.images){
-                const result = await uploadFile(file)
-                images.push(result.Location)
-            }
+app.post("/admin/insertBlog", 
+        insertBlogUpload, [
+          check("author").not().isEmpty(),
+          check("blogHeading").not().isEmpty(),
+          check("blogSubHeading").not().isEmpty(),
+          check("content").not().isEmpty(),
+          check("blogType").not().isEmpty()
+        ], async (req, res) => {
+    
+    try{
+        const errors = validationResult(req);
+        if(!errors.isEmpty()){
+          return res.status(400).json({code: 400, message: errors});
         }
-        else{ images = null}
-        if(req.files.authorImage !== undefined){
-            const result = await uploadFile(req.files.authorImage[0])
-            authorImage = result.Location
+
+        let authorImage = "";
+        let blogImage = "";
+        let videoFile = "";
+
+        // console.log(req.body);
+        // console.log(req.files);
+
+        if(req.files.authorImage === undefined || req.files.blogImage === undefined || (req.body.isVideoBlog === 'true' && req.files.videoFile === undefined)){
+          return res.status(404).json({code: 404, message: "Media Files Missing"});
         }
-        else{
-            authorImage = null
+        
+        let result = await uploadFile(req.files.authorImage[0]);
+        authorImage = result.Location;
+
+        // console.log("AuthorImage - ", authorImage);
+
+        result = await uploadFile(req.files.blogImage[0]);
+        blogImage = result.Location;
+
+        // console.log("Blog Image - ", blogImage);
+
+        if(req.body.isVideoBlog === 'true'){
+          result = await uploadFile(req.files.videoFile[0]);
+          videoFile = result.Location;
         }
-        if(req.files.videoFile !== undefined){
-            const result = await uploadFile(req.files.videoFile[0])
-            videoFile = result.Location
-        }
-        else{
-            videoFile = null
-        }}
-        const insertResult = await client.query(`INSERT INTO "aptblogs" ("author","content","heading","subHeading","authorThumbnail","isVideoBlog","videoLink","imagesLinks") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[
+
+        // console.log("Video Link - ", videoFile);
+
+        const insertResult = await client.query(`INSERT INTO "aptblogs" 
+          ("author", "content", "heading", "subHeading", "authorThumbnail", "isVideoBlog", "videoLink", 
+          "imageLinks", "category", "isFeatured", "updateTime") 
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`, [
             req.body.author,
             req.body.content,
             req.body.blogHeading,
@@ -1562,11 +1817,54 @@ app.post("/admin/insertBlog",insertBlogUpload, async (req,res)=>{
             authorImage,
             req.body.isVideoBlog,
             videoFile,
-            images
-        ])
-        console.log(insertResult)
+            blogImage,
+            req.body.blogType,
+            req.body.blogFeatured,
+            new Date()
+        ]);
+
+        // console.log(insertResult.rows[0]);
         res.send(insertResult.rows[0]).status(200)
-        }
+
+        // console.log("----------------\n", req);
+        // console.log(req.body);
+        // console.log(req.files);
+        // if(req.files !== undefined){
+        // if(req.files.images !== undefined){
+        //     for(var file of req.files.images){
+        //         const result = await uploadFile(file)
+        //         images.push(result.Location)
+        //     }
+        // }
+        // else{ images = null}
+        // if(req.files.authorImage !== undefined){
+        //     const result = await uploadFile(req.files.authorImage[0])
+        //     authorImage = result.Location
+        // }
+        // else{
+        //     authorImage = null
+        // }
+        // if(req.files.videoFile !== undefined){
+        //     const result = await uploadFile(req.files.videoFile[0])
+        //     videoFile = result.Location
+        // }
+        // else{
+        //     videoFile = null
+        // }}
+        // const insertResult = await client.query(`INSERT INTO "aptblogs" ("author","content","heading","subHeading","authorThumbnail","isVideoBlog","videoLink","imagesLinks") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[
+        //     req.body.author,
+        //     req.body.content,
+        //     req.body.blogHeading,
+        //     req.body.blogSubHeading,
+        //     authorImage,
+        //     req.body.isVideoBlog,
+        //     videoFile,
+        //     images
+        // ])
+        // console.log(insertResult)
+        // res.send(insertResult.rows[0]).status(200)
+        // res.sendStatus(200);
+    }
     catch(err){
         console.log(err)
         res.send("Internal Server Error").status(500)
@@ -1629,12 +1927,116 @@ app.get("/allblogs", async(req, res) => {
                 message : "Data not found"
             })
         }
-        }
+      }
     catch(e){
         console.log(e)
         res.send("Internal Server Error").status(500)
-        }
+    }
 })
+
+app.delete("/admin/deletePackage", [
+          check("packageID")
+        ], async (req, res) => {
+        try{
+          const errors = validationResult(req);
+          if(!errors.isEmpty()){
+            return res.status(404).json({code: 404, message: "packageID not found"});
+          }
+  
+          const checkExist = await client.query(`SELECT * FROM "aptpackages" WHERE 
+            "packageID" = $1`, [req.query.packageID]);
+          
+          // console.log(checkExist.rows[0].image);
+
+          if(checkExist.rows.length === 0){
+            return res.status(400).json({code: 400, message: "Couldn't find a package for respective packageID"});
+          }
+          
+          const result = await deleteFile(checkExist.rows[0].image);
+          // console.log("Delete Result" - result);
+
+          const uploadResult = await client.query(`DELETE FROM "aptpackages" WHERE "packageID" = $1 RETURNING *`, 
+            [req.query.packageID]
+          );
+          if(uploadResult.rows.length > 0){
+            res.status(200).json({code: 200, message: "Successfully Deleted"});
+          }
+          else{
+            res.status(500).json({code: 500, message: "Couldn't Delete package"});
+          }
+          // console.log(uploadResult.rows);
+        }
+        catch(err){
+          console.log(err);
+          res.status(500).json({code: 500, message: err});
+        }
+});
+
+app.delete("/admin/deleteTest", [
+          check("testID")
+        ], async (req, res) => {
+        try{
+          const errors = validationResult(req);
+          if(!errors.isEmpty()){
+            return res.status(404).json({code: 404, message: "testID not found"});
+          }
+  
+          const checkExist = await client.query(`SELECT * FROM "apttests" WHERE 
+            "testID" = $1`, [req.query.testID]);
+  
+          if(checkExist.rows.length === 0){
+            return res.status(400).json({code: 400, message: "Couldn't find a test for respective testID"});
+          }
+  
+          const uploadResult = await client.query(`DELETE FROM "apttests" WHERE "testID" = $1 RETURNING *`, 
+            [req.query.testID]
+          );
+          // console.log(uploadResult.rows);
+          if(uploadResult.rows.length > 0){
+            res.status(200).json({code: 200, message: "Successfully Deleted"});
+          }
+          else{
+            res.status(500).json({code: 500, message: "Couldn't Delete test"});
+          }
+        }
+        catch(err){
+          console.log(err);
+          res.status(500).json({code: 500, message: err});
+        }
+});
+
+app.delete("/admin/deleteBlog", [
+          check("blogID")
+        ], async (req, res) => {
+        try{
+          const errors = validationResult(req);
+          if(!errors.isEmpty()){
+            return res.status(404).json({code: 404, message: "blogID not found"});
+          }
+  
+          const checkExist = await client.query(`SELECT * FROM "aptblogs" WHERE 
+            "blogId" = $1`, [req.query.blogID]);
+  
+          if(checkExist.rows.length === 0){
+            return res.status(400).json({code: 400, message: "Couldn't find a blog for respective blogId"});
+          }
+  
+          const uploadResult = await client.query(`DELETE FROM "aptblogs" WHERE "blogId" = $1 RETURNING *`, 
+            [req.query.blogID]
+          );
+          console.log(uploadResult.rows);
+          if(uploadResult.rows.length > 0){
+            res.status(200).json({code: 200, message: "Successfully Deleted"});
+          }
+          else{
+            res.status(500).json({code: 500, message: "Couldn't Delete blog"});
+          }
+        }
+        catch(err){
+          console.log(err);
+          res.status(500).json({code: 500, message: err});
+        }
+});
 
 //For Coupons
 // modification required
@@ -1738,26 +2140,40 @@ app.get("/applyCoupon", async (req,res)=>{
 });
 
 // getAllCoupons
-app.get("/getAllCoupons",async(req,res)=>{
+app.get("/getAllCoupons", async (req, res) => {
   try{
-    const response = await client.query(`SELECT * FROM "aptcoupons"`)
-    res.send(response.rows).status(200)
+    const response = await client.query(`SELECT * FROM "aptcoupons"`);
+    res.json(response.rows).status(200);
   }catch(err){
-    console.log(err)
-    res.status(500)
+    console.log(err);
+    res.status(500).json([]);
   }
 })
 
 // addCoupons
-app.post("/uploadCoupon",async(req,res)=>{
+app.post("/uploadCoupon", [
+    check("couponCode").not().isEmpty(),
+    check("couponPrice").not().isEmpty()
+  ],
+  async (req, res) => {
   try{
-    const result = await client.query(`INSERT INTO "aptcoupons" VALUES ($1,$2)`,[req.body.couponCode,req.body.couponPrice])
-    res.send("ok").sendStatus(200)
-  }catch(err){
-    console.log(err)
-    res.send("failed").sendStatus(500)
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.json(errors).status(400);
+    }
+    const result = await client.query(`INSERT INTO "aptcoupons" VALUES ($1, $2)`, [req.body.couponCode, req.body.couponPrice]);
+    if(result.rowCountra > 0){
+      res.json({code: 200, message: "Coupon Added Successfully"}).status(200);
+    }
+    else{
+      res.json({code: 500, message: "Couldn't add coupon"}).status(500);
+    }
   }
-})
+  catch(err){
+    console.log(err);
+    res.json({code: 500, message: "Server Issue, try again!"}).status(500);
+  }
+});
 
 // index Page
 
@@ -1773,15 +2189,15 @@ app.get("/getCovidTests", async(req,res)=>{
   }
 })
 
-app.get("/getPackages", async(req,res)=>{
+app.get("/getPackages", async(req, res) => {
   try{
     const response = await client.query(`SELECT * FROM "aptpackages"  WHERE "isSpecial" = 'true' `);
     const data = response.rows;
     res.send({code:200,data}).status(200);
   }
   catch(e){
-    console.log(e)
-    res.status(500).send()
+    console.log(e);
+    res.status(500).send();
   }
 })
 
@@ -1874,58 +2290,109 @@ const setSlot = async (data) => {
 app.get("/getFlebo",async (req,res)=>{
   try{
     // sendMail()
-    const result = await client.query(`SELECT * FROM "aptutils"`)
-    res.status(200).json(result.rows[0])
+    const result = await client.query(`SELECT * FROM "aptutils"`);
+    // console.log(result.rows[0]);
+    res.status(200).json(result.rows[0]);
   }
   catch(err){
-    console.log(err)
-    res.status(500)
+    console.log(err);
+    res.status(500);
   }
-})
+});
 
 
-app.post("/setFlebo",async (req,res)=>{
+app.post("/setFlebo", [
+      check("newFlebo").isNumeric(),
+      check("currFlebo").isNumeric()
+    ], async (req,res) => {
   try{
-    const result = await client.query(`UPDATE "aptutils" SET "flebo" = $1 WHERE "flebo" = $2 `,[req.body.newFlebo,req.body.currFlebo])
-    res.sendStatus(200)
-  }
-  catch(err){
-    console.log(err)
-    res.sendStatus(500)
-  }
-})
-
-
-// admin - fetch subscribers email
-app.get("/admin/getSubscribers",async(req,res)=>{
-  try{
-    const result = await client.query(`SELECT * FROM "aptsubscribers"`)
-    if(result.rows.length > 0 ){
-      res.json(result.rows).status(200)
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.status(400).json({code: 400, message: errors});
+    }
+    const result = await client.query(`UPDATE "aptutils" SET "flebo" = $1 WHERE "flebo" = $2 `,
+                        [req.body.newFlebo, req.body.currFlebo]);
+    console.log(result);
+    if(result.rowCount > 0){
+      res.status(200).json({code: 200, message: "Successfully Updated"});
     }
     else{
-      res.json({"data":"nodata"}).status(400)
+      res.status(500).json({code: 500, message: "Server Issue, try again later!"});
     }
-  }catch(err){
-    console.log(err)
-    res.status(500)
   }
-}) 
+  catch(err){
+    console.log(err);
+    res.status(500).json({code: 500, message: "Server Issue, try again later!"});
+  }
+});
+
+// admin - fetch subscribers email
+app.get("/admin/getSubscribers", async(req, res) => {
+  try{
+    const result = await client.query(`SELECT * FROM "aptsubscribers"`);
+    // console.log(result.rows.length);
+    if(result.rows.length > 0 ){
+      res.json(result.rows).status(200);
+    }
+    else{
+      res.json([]).status(400);
+    }
+  }
+  catch(err){
+    console.log(err);
+    res.status(500).json([]);
+  }
+});
 
 // admin - fetch users email
-app.get("/admin/fetchUserList",async(req,res)=>{
+app.get("/admin/fetchUserList", async(req, res) => {
   try{
-    const result = await client.query(`SELECT "userName" , "email" FROM "apttestuser"`)
+    const result = await client.query(`SELECT "userName", "email" FROM "apttestuser"`)
     if(result.rows.length > 0){
-      res.json(result.rows).status(200)
+      res.json(result.rows).status(200);
     }else{
-      res.json({"data":"nodata"}).status(400)
+      res.json([]).status(400);
     }
-  }catch(err){
-    console.log(err)
-    res.status(500)
   }
-}) 
+  catch(err){
+    console.log(err);
+    res.status(500).json([]);
+  }
+});
+
+// fetch Contactus
+app.get("/admin/fetchContactus", async(req, res) => {
+  try{
+    const result = await client.query(`SELECT * FROM "aptcontactus"`);
+    if(result.rows.length > 0){
+      res.json(result.rows).status(200);
+    }
+    else{
+      res.json([]).status(400);
+    }
+  }
+  catch(err){
+    console.log(err);
+    res.json([]).status(500);
+  }
+});
+
+// fetchFeedbacks
+app.get("/admin/fetchFeedbacks", async (req, res) => {
+  try{
+    const result = await client.query(`SELECT * FROM "aptquery"`);
+    if(result.rows.length > 0){
+      res.json(result.rows).status(200);
+    }
+    else{
+      res.json([]).status(400);
+    }
+  }
+  catch(err){
+    console.log(err);
+    res.json([]).status(500);
+  }
+});
 
 // post prescriptions
 
@@ -2022,41 +2489,6 @@ app.post("/postContactus",
             }
           }
 ); 
-
-// fetchFeedbacks
-app.get("/admin/fetchFeedbacks",async(req,res)=>{
-  try{
-    const result = await client.query(`SELECT * FROM "aptquery"`)
-    if(result.rows.length > 0){
-      res.json({data:result.rows}).status(200)
-    }
-    else{
-      res.josn({data:"no data"}).status(400)
-    }
-  }
-  catch(err){
-    console.log(err)
-    res.send("failed").status(500)
-  }
-})
-
-// fetch Contactus
-app.get("/admin/fetchContactus",async(req,res)=>{
-  try{
-    const result = await client.query(`SELECT * FROM "aptcontactus"`)
-    if(result.rows.length > 0){
-      res.json({data:result.rows}).status(200)
-    }
-    else{
-      res.josn({data:"no data"}).status(400)
-    }
-  }
-  catch(err){
-    console.log(err)
-    res.send("failed").status(500)
-  }
-
-})
 
 app.post("/requestCallback", async (req,res)=>{
   try{

@@ -14,16 +14,41 @@ secretAccessKey
 })
  
 function uploadFile(file){
-    const fileStream = fs.createReadStream(file.path)
+    const type = file.mimetype.split('/')[1];
+    // console.log("MimeType --", type);
+
+    const fileStream = fs.createReadStream(file.path);
 
     const uploadParams = {
         Bucket: bucketName,
         Body: fileStream,
-        Key: file.filename
-    }
+        Key: file.filename + `.${type}`,
+        ACL: 'public-read'
+    };
 
-    return s3.upload(uploadParams).promise()
+    return s3.upload(uploadParams).promise();
 
 }
-exports.uploadFile = uploadFile
-  
+
+async function deleteFile(file){
+    console.log("File Name - ", file);
+
+    const deleteParams = {
+        Bucket: bucketName,
+        Key: `${file}`
+    };
+
+    return s3.deleteObject(deleteParams, function(err, data){
+        if(err) {
+            // console.log("Error S3 - ", err);
+            return err;
+        }
+        else {
+            console.log("Data S3 - ", data);
+            return data;
+        };
+    });
+}
+
+exports.uploadFile = uploadFile;
+exports.deleteFile = deleteFile;
