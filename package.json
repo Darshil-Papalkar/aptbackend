@@ -1,0 +1,34 @@
+{
+  "name": "aptbackend",
+  "version": "1.0.0",
+  "description": "aptbackend",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "keywords": [
+    "aptdiagnostics"
+  ],
+  "author": "ayush payasi",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.29.0",
+    "@sendgrid/mail": "^7.4.5",
+    "aws-sdk": "^2.927.0",
+    "axios": "^0.21.1",
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "express": "^4.17.1",
+    "express-validator": "^6.12.1",
+    "multer": "^1.4.2",
+    "node-postgres": "^0.6.2",
+    "nodemailer": "^6.6.1",
+    "nodemon": "^2.0.7",
+    "pg": "^8.6.0",
+    "pm2": "^5.1.0",
+    "razorpay": "^2.0.6"
+  }
+}
