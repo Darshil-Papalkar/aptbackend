@@ -10,6 +10,7 @@ const { uploadFile, deleteFile } = require("./s3");
 const sgMail = require('@sendgrid/mail');
 const bcrypt = require('bcryptjs');
 const { check, validationResult } = require('express-validator');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 
@@ -174,13 +175,15 @@ const liveHealthApiRequest = {
       "Content-Type": "application/json",
     };
     try {
-      const response = await axios.post(`https://staging.livehealth.solutions/LHRegisterBillAPI/${process.env.LIVE_HEALTH_TOKEN}/`, data, { headers: headers});
-      // console.log("possible backend data -----------------------");
-      // console.log(response.data);
-      // console.log("++++++++++++++++++++++++++++++++++++++++++++++++");
+      const response = await axios.post(
+        `https://staging.livehealth.solutions/LHRegisterBillAPI/${process.env.LIVE_HEALTH_TOKEN}/`, 
+        data, 
+        { headers: headers}
+      );
       return { code: "200", data: response.data };
     } 
     catch (err) {
+      console.log(err);
       return { code: "400", data: err };
     }
   },
@@ -194,11 +197,10 @@ const liveHealthApiRequest = {
         data,
         {headers: headers}
       );
-      // console.log("+++++++++++++++++++++++++++");
-      // console.log(response.data);
-      // console.log("+++++++++++++++++++++++++++");
       return { code: "200", data: response.data };
-    } catch (err) {
+    } 
+    catch (err) {
+      console.log(err);
       return { code: "400", data: err };
     }
   },
@@ -535,70 +537,80 @@ APT Diagnostics`;
 //booking utilities
 
 const checkUserExist = async (data) => {
-  const response = await client.query(`SELECT * FROM "apttestuser" WHERE "contact" = $1`, [data.mobile]);
-  // console.log("checkUser --------------", response.data);
+  const response = await client.query(`SELECT * FROM "apttestuser" WHERE 
+  "contact" = $1 ;`, [data.mobile]);
   return response.rows[0];
 }
 
 const createNewUser = async (data) => {
-  // console.log(data);
+  // console.log("New User Data - ", data);
   const passdate = new Date(data.dob).getFullYear();
-  const password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
-  const response = await client.query(`INSERT INTO "apttestuser" ("userName","dob","email","gender","appointmentList","billList","contact","address","userPassword", "reportList") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,[
-    data.fullName,
-    data.dob,
-    data.email,
-    data.gender,
-    data.appointmentList,
-    data.billList,
-    data.mobile,
-    data.area,
-    password,
-    data.reportList
+  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
+  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
+  const response = await client.query(`INSERT INTO "apttestuser" 
+                                          ("userName", "dob", "email", "gender", "appointmentList", "billList", "contact", 
+                                          "address", "userPassword", "reportList", "couponsUsed", "age", "prefix") 
+                                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,[
+    data.fullName, data.dob, data.email, data.gender, data.appointmentList, data.billList,
+    data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix
   ]);
   await welcomeNewUser(data);
   return response.rowCount === 1;
 }
 
 const updateExistingUser = async (data) => {
-  // console.log(data);
-  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3 WHERE "contact" = $4`,[
-    data.appointmentList,
-    data.billList,
-    data.reportList,
-    data.mobile
+  // console.log("Existing User Data - ", data);
+  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
+                                      "couponsUsed" = $4, "age" = $5, "gender" = $6, "email" = $7, "address" = $8, "prefix" = $9
+                                      WHERE "contact" = $10`,[
+    data.appointmentList, data.billList, data.reportList, data.couponsUsed,
+    data.age, data.gender, data.email, data.address, data.prefix, data.mobile
   ]);
   return response.rowCount === 1;
 }
 
 
 const createNewUser2 = async (data) => {
-  const passdate = new Date(data.dob).getFullYear()
-  const password = /^\S*/i.exec(data.fullName)[0].toLowerCase()+passdate
-  const response = await client.query(`INSERT INTO "apttestuser" ("userName","dob","email","gender","appointmentList","billList","contact","address","userPassword","appointmentList","billList") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) returning *`,[
-    data.fullName,
-    data.dob,
-    data.email,
-    data.gender,
-    data.appointmentList,
-    data.billList,
-    data.mobile,
-    data.area,
-    password,[],[]
-  ])
-  return response.rows[0]
-}
+  const passdate = new Date(data.dob).getFullYear();
+  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
+  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
+  const response = await client.query(`INSERT INTO "apttestuser" (
+    "userName", "userPassword", "dob", "email", "gender", "address", "appointmentList",
+    "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning 
+    "userId", "userName", "dob", "email", "gender", "address", 
+    "appointmentList", "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix";`,[
+      data.fullName,
+      password,
+      data.dob,
+      data.email,
+      data.gender,
+      data.area,
+      [], [], [],
+      data.mobile,
+      null,
+      [],
+      data.age,
+      data.prefix
+    ]
+  );
 
-const updateExistingUser2 = async(data)=>{
-  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2 WHERE "contact" = $3 returning *`,[
+  await welcomeNewUser(data);
+  return response.rows[0];
+};
+
+const updateExistingUser2 = async (data) => {
+  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
+                                      "couponsUsed" = $4 WHERE "contact" = $5`,[
     data.appointmentList,
     data.billList,
+    data.reportList,
+    data.couponsUsed,
     data.mobile
-  ])
-  return response.rows[0]
+  ]);
+
+  return response.rows[0];
 }
-
-
 
 const findUserByFamilyId = async (data)=>{
   const result = await client.query(`SELECT * FROM "apttestuser" WHERE "familyId" = $1`,[data.familyId])
@@ -615,21 +627,35 @@ const isFamilyMemberExist = async (data) => {
 }
 
 const createFamilyMember = async (data) => {
-  const result = await client.query(`INSERT INTO "memberslist" ("userName" , "dob" , "address" , "gender" , "familyId") VALUES ($1 ,$2 ,$3 ,$4, $5)`,[
+  // console.log("Create Family Member - " , data);
+  const result = await client.query(`INSERT INTO "memberslist" 
+                              ("userName" , "dob" , "address" , "gender" , "familyId", "email", "mobile", "prefix", "age") 
+                              VALUES ($1 ,$2 ,$3 ,$4, $5, $6, $7, $8, $9)`,[
     data.fullName.trim(),
     data.dob,
     data.area,
     data.gender,
-    data.familyId
+    data.familyId,
+    data.email,
+    data.mobile,
+    data.prefix,
+    data.age
   ]);
   return result.rowCount === 1;
 }
 
 const updateFamilyMember = async (data) => {
-  const result = await client.query(`UPDATE "memberslist" SET "address"=$1 ,"dob"=$2 WHERE "userName" = $3 AND "familyId" = $4`,[
+
+  // console.log("Update Family Member - " , data);
+  const result = await client.query(`UPDATE "memberslist" SET "address" = $1, "gender" = $2, "email" = $3, "mobile" = $4,
+                                    "prefix" = $5, "age" = $6 WHERE "mobile" = $7 AND "familyId" = $8`,[
     data.area,
-    data.dob,
-    data.fullName.trim(),
+    data.gender,
+    data.email,
+    data.mobile,
+    data.prefix,
+    data.age,
+    data.mobile,
     data.familyId
   ]);
   return result.rowCount == 1;
@@ -732,223 +758,37 @@ app.post("/saveBeforeBooking",async(req,res)=>{
 
 app.post("/bookAppointment/lab", async (req, res) => {
     try{
+      // console.log(req.body.data);
+
       let newBillId = "";
       let newAppointmentId = "";
       let newReportDetails = [];
-      console.log(req.body);
+
       const liveHealthResponse = await liveHealthApiRequest.labAppointment(req.body.data);
-      console.log(liveHealthResponse.data);
+      // console.log(liveHealthResponse.response);
       if(liveHealthResponse.code === "200"){
-        
         newBillId = liveHealthResponse.data.billId;
         newAppointmentId = liveHealthResponse.data.appointmentId;
-        newReportDetails.push(...liveHealthResponse.data.reportDetails);
-        // console.log(newReportDetails);
+        newReportDetails.push(...(liveHealthResponse.data.reportDetails.map(item => item.testID)));
       }
       else{
         console.log("________live health api error____________");
         throw {code: 500, message: "Error in livehealth api!"};
       }
       
-      // console.log(newBillId, newAppointmentId);
-
       if(req.body.supportingData.isMember){ // is family member
-        console.log("family member");
-
+        // console.log("Is family member");
         if(await isFamilyMemberExist(req.body.supportingData)){
           await updateFamilyMember(req.body.supportingData);
         }
         else{
           await createFamilyMember(req.body.supportingData);
         }
-        const userUpdateData = await checkUserExist(req.body.supportingData);
-        
-        if(userUpdateData !== undefined){ // user exist
-          
-          let appointmentList = userUpdateData.appointmentList;
-          let billList = userUpdateData.billList;
-          let reportList = userUpdateData.reportList;
-
-          appointmentList.push(newAppointmentId);
-          billList.push(newBillId);
-          reportList.push(newReportDetails);
-
-          const data2 = {
-            appointmentList,
-            billList,
-            reportList,
-            mobile: userUpdateData.contact
-          };
-
-          if(updateExistingUser(data2)){ // existing user update
-            if(await setSlot(req.body.supportingData)){
-              res.json({code:200, message:"booking done with member modification"});
-            }
-          }
-          else{ 
-            res.json({code:500, message:"Internal Server Error!"});
-          }
-        }
-        else{ // user doesn't exist
-          throw {code:500, message:"Internal Server Error!"};
-        }
+         // is not a family member
       }
 
-      else{ // is not a family member
-        console.log("not a family member");
-        const userData = await checkUserExist(req.body.supportingData);
-        if(userData !== undefined) //user exist
-        {
-          let billList = userData.billList;
-          let appointmentList = userData.appointmentList;
-          let reportList = userData.reportList;
-          let reportData = [];
+      // console.log("Normal Member");
 
-          reportList.map(item => {
-            // console.log(item);
-            // console.log("++++++++++++++++++++");
-            reportData.push(JSON.parse(item));
-          });
-
-          // console.log(reportData);
-
-          billList.push(newBillId);
-          appointmentList.push(newAppointmentId);
-          newReportDetails.push(...reportData);
-          // console.log(newReportDetails);
-          // console.log(typeof(newReportDetails));
-
-          const data2 = {
-            appointmentList,
-            billList,
-            reportList: newReportDetails,
-            mobile: req.body.data.mobile
-          }
-
-          if(await updateExistingUser(data2)){
-            if(await setSlot(req.body.supportingData)){
-
-              await successfulUserBooking(req.body.supportingData);
-              // setTimeout(billID(req.body.supportingData, newBillId), 10000);
-              await billID(req.body.supportingData, newBillId);
-
-              throw {code:200, message: "Existing user updated and slot booked"};
-            }
-            else{
-              throw {code: 400, message: "Existing user updated! but slot booking failed"};
-            }
-          }
-          else{
-            throw {code:500, message: "Can't update existing user!"};
-          }
-        } 
-        else //user not exist
-        {
-          const data2 = {
-            "mobile": req.body.supportingData.mobile,
-            "email": req.body.supportingData.email,
-            "fullName": req.body.supportingData.fullName,
-            "gender": req.body.supportingData.gender,
-            "area": req.body.supportingData.area,
-            "dob": req.body.supportingData.dob,
-            "billList": [newBillId],
-            "appointmentList": [newAppointmentId],
-            "reportList": newReportDetails
-          };
-          console.log('creating new user');
-          if(await createNewUser(data2)){
-            if(await setSlot(req.body.supportingData)){
-
-              await successfulUserBooking(req.body.supportingData);
-              // setTimeout(billID(req.body.supportingData, newBillId), 10000);
-              await billID(req.body.supportingData, newBillId);
-
-              throw {code:200, message:"User Created with successful slot booking!"};
-            }
-            else{
-              throw {code: 400, message: "User created but slot booking failed"};
-            }
-          }
-          else{
-            throw {code:500, message:"Can't create new user!"};
-          }
-        }
-      }
-    }
-    catch(err){
-      console.log(err);
-      res.json({code: err.code, message: err.message});
-    }
-});
-
-
-app.post("/bookAppointment/home", async(req, res) => {
-  try{
-    // console.log("Home Booking");
-    // console.log(req.body);
-
-    let newBillId = "";
-    let newAppointmentId = "" ;
-    let newReportDetails = [];
-
-    const liveHealthResponse = await liveHealthApiRequest.homeAppointment(req.body.data);
-    // console.log(liveHealthResponse.data);
-    if(liveHealthResponse.code === "200"){
-
-      newBillId = liveHealthResponse.data.billId;
-      newAppointmentId = liveHealthResponse.data['homecollection ID'];
-      newReportDetails.push(...liveHealthResponse.data.reportDetails);
-
-    }
-    else{
-      console.log("________live health api error____________");
-      throw {code: 500, message: "Error in livehealth api!"};
-    }
-
-    if(req.body.supportingData.isMember){
-      console.log("family member");
-      if(await isFamilyMemberExist(req.body.supportingData)){
-        await updateFamilyMember(req.body.supportingData);
-      }
-      else{
-        await createFamilyMember(req.body.supportingData);
-      }
-      const userUpdateData = await checkUserExist(req.body.supportingData);
-      
-      if(userUpdateData !== undefined){ // user exists
-
-        let appointmentList = userUpdateData.appointmentList;
-        let billList = userUpdateData.billList;
-        let reportList = userUpdateData.reportList;
-
-        appointmentList.push(newAppointmentId);
-        billList.push(newBillId);
-        reportList.push(newReportDetails);
-        // console.log(billList,appointmentList);
-
-        const data2 = {
-          appointmentList,
-          billList,
-          reportList,
-          mobile:userUpdateData.mobile
-        };
-
-        if(updateExistingUser(data2)){
-          if(await setSlot(req.body.data)){
-            res.json({code:200,message:"booking done with member modification"})}
-        }
-        else{
-          res.json({code:500,message:"Internal Server Error!"})
-        }
-      }
-      else{
-        res.json({code:500,message:"Internal Server Error!"})
-      }
-    }
-    else{
-      
-      console.log("not a family member");
-      // console.log(req.body)
       const userData = await checkUserExist(req.body.supportingData);
       if(userData !== undefined) //user exist
       {
@@ -956,11 +796,13 @@ app.post("/bookAppointment/home", async(req, res) => {
         let appointmentList = userData.appointmentList;
         let reportList = userData.reportList;
         let reportData = [];
+        let couponsUsed = userData.couponsUsed.length ? userData.couponsUsed : [];
 
         reportList.map(item => {
           reportData.push(JSON.parse(item));
         });
 
+        couponsUsed.push(req.body.supportingData.coupon);
         billList.push(newBillId);
         appointmentList.push(newAppointmentId);
         newReportDetails.push(...reportData);
@@ -969,21 +811,28 @@ app.post("/bookAppointment/home", async(req, res) => {
           appointmentList,
           billList,
           reportList: newReportDetails,
-          mobile: req.body.data.mobile
+          mobile: req.body.data.mobile,
+          couponsUsed : req.body.supportingData.isMember ? [] : couponsUsed,
+          age : req.body.supportingData.age,
+          gender : req.body.supportingData.gender,
+          email : req.body.supportingData.email,
+          address : req.body.supportingData.area,
+          prefix : req.body.supportingData.prefix
         };
 
         if(await updateExistingUser(data2)){
           if(await setSlot(req.body.supportingData)){
-              await homeCollectionExistingUser(req.body.supportingData);
-              await billID(req.body.supportingData, newBillId);
-              throw {code: 200, message: "Existing User updated and slot booked!"};
+
+            await successfulUserBooking(req.body.supportingData);
+            // await billID(req.body.supportingData, newBillId);
+            throw {code:200, message: "Existing user updated and slot booked"};
           }
           else{
-            throw {code: 400, message: "Existing User updated! but slot booking failed"};
+            throw {code: 400, message: "Existing user updated! but slot booking failed"};
           }
         }
         else{
-          throw {code: 500, message: "Can't update existing user!"}; 
+          throw {code:500, message: "Can't update existing user!"};
         }
       } 
       else //user not exist
@@ -995,24 +844,142 @@ app.post("/bookAppointment/home", async(req, res) => {
           "gender": req.body.supportingData.gender,
           "area": req.body.supportingData.area,
           "dob": req.body.supportingData.dob,
-          "billList":[newBillId],
-          "appointmentList":[newAppointmentId],
-          "reportList": newReportDetails
-        }
-        console.log("Creating new user");
+          "billList": [newBillId],
+          "appointmentList": [newAppointmentId],
+          "reportList": newReportDetails,
+          "couponsUsed": [req.body.supportingData.coupon],
+          "age": req.body.supportingData.age,
+          "prefix": req.body.supportingData.prefix
+        };
+
         if(await createNewUser(data2)){
           if(await setSlot(req.body.supportingData)){
-              await homeCollectionNewUser(req.body.supportingData);
-              await billID(req.body.supportingData, newBillId);
-              throw {code: 200, message: "user created with successful slot booking!"};
+
+            await successfulUserBooking(req.body.supportingData);
+            // await billID(req.body.supportingData, newBillId);
+            throw {code:200, message:"User Created with successful slot booking!"};
           }
           else{
-            throw {code: 400, message: "User Created but slot booking failed!"};
+            throw {code: 400, message: "User created but slot booking failed"};
           }
         }
         else{
-          throw {code: 500, message: "Can't create new user!"};
+          throw {code:500, message:"Can't create new user!"};
         }
+      }
+    }
+    catch(err){
+      console.log(err);
+      res.json({code: err.code, message: err.message});
+    }
+});
+
+
+app.post("/bookAppointment/home", async (req, res) => {
+  try{
+
+    let newBillId = "";
+    let newAppointmentId = "" ;
+    let newReportDetails = [];
+
+    const liveHealthResponse = await liveHealthApiRequest.homeAppointment(req.body.data);
+    
+    if(liveHealthResponse.code === "200"){
+      newBillId = liveHealthResponse.data.billId;
+      newAppointmentId = liveHealthResponse.data['homecollection ID'];
+      newReportDetails.push(...(liveHealthResponse.data.reportDetails.map(item => item.testID)));
+    }
+    else{
+      console.log("________live health api error____________");
+      throw {code: 500, message: "Error in livehealth api!"};
+    }
+
+    if(req.body.supportingData.isMember){
+      if(await isFamilyMemberExist(req.body.supportingData)){
+        await updateFamilyMember(req.body.supportingData);
+      }
+      else{
+        await createFamilyMember(req.body.supportingData);
+      }
+    }
+    
+    const userData = await checkUserExist(req.body.supportingData);
+
+    if(userData !== undefined) //user exist
+    {
+      let billList = userData.billList;
+      let appointmentList = userData.appointmentList;
+      let reportList = userData.reportList;
+      let reportData = [];
+      let couponsUsed = userData.couponsUsed.length ? userData.couponsUsed : [];
+
+      reportList.map(item => {
+        reportData.push(JSON.parse(item));
+      });
+
+      couponsUsed.push(req.body.supportingData.coupon);
+      billList.push(newBillId);
+      appointmentList.push(newAppointmentId);
+      newReportDetails.push(...reportData);
+
+      const data2 = {
+        appointmentList,
+        billList,
+        reportList: newReportDetails,
+        mobile: req.body.data.mobile,
+        couponsUsed : req.body.supportingData.isMember ? [] : couponsUsed,
+        age : req.body.supportingData.age,
+        gender : req.body.supportingData.gender,
+        email : req.body.supportingData.email,
+        address : req.body.supportingData.area,
+        prefix : req.body.supportingData.prefix
+      };
+
+      if(await updateExistingUser(data2)){
+        if(await setSlot(req.body.supportingData)){
+          
+            await homeCollectionExistingUser(req.body.supportingData);
+            // await billID(req.body.supportingData, newBillId);
+            throw {code: 200, message: "Existing User updated and slot booked!"};
+        }
+        else{
+          throw {code: 400, message: "Existing User updated! but slot booking failed"};
+        }
+      }
+      else{
+        throw {code: 500, message: "Can't update existing user!"}; 
+      }
+    } 
+    else //user not exist
+    {
+      const data2 = {
+        "mobile": req.body.supportingData.mobile,
+        "email": req.body.supportingData.email,
+        "fullName": req.body.supportingData.fullName,
+        "gender": req.body.supportingData.gender,
+        "area": req.body.supportingData.area,
+        "dob": req.body.supportingData.dob,
+        "billList":[newBillId],
+        "appointmentList":[newAppointmentId],
+        "reportList": newReportDetails,
+        "couponsUsed": [req.body.supportingData.couponsUsed],
+        "age": req.body.supportingData.age,
+        "prefix": req.body.supportingData.prefix
+      };
+
+      if(await createNewUser(data2)){
+        if(await setSlot(req.body.supportingData)){
+
+            await homeCollectionNewUser(req.body.supportingData);
+            // await billID(req.body.supportingData, newBillId);
+            throw {code: 200, message: "user created with successful slot booking!"};
+        }
+        else{
+          throw {code: 400, message: "User Created but slot booking failed!"};
+        }
+      }
+      else{
+        throw {code: 500, message: "Can't create new user!"};
       }
     }
   }
@@ -1022,47 +989,98 @@ app.post("/bookAppointment/home", async(req, res) => {
   }
 });
 
+const checkLoginPass =  async (clientPass, dbPass) => {
+  const isValid = await bcrypt.compare(clientPass, dbPass);
+  return isValid;
+};
 
-
-app.post("/login", async (req, res) => {
+app.post("/login", [
+      check("mobile").isNumeric().isLength({min: 10, max: 10}),
+      check("password").isLength({min: 8})
+    ], 
+    async (req, res) => {
   try {
-    const result = await client.query(`select "userName","dob","email","gender","address","familyId","contact" from "apttestuser" WHERE "contact"=$1 AND "userPassword" =$2`,[
-      req.body.contact,req.body.password]);
-    if(result.rowCount > 0){
-      res.json({code:200,data:result.rows[0]})
-    } 
-    else{
-      res.json({code:400,data:null})
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.status(400).json({code: 400, data: errors, message: 
+      "Invalid Values Passed!"});
     }
-  } catch (e) {
+    const userCheck = await checkUserExist(req.body);
+    if(userCheck === undefined){
+      return res.status(200).json({code: 404, data: null, 
+        message: "User Doesn't Exists"});
+    }
+    else if(!(await checkLoginPass(req.body.password, userCheck.userPassword))){
+      // console.log("Wrong Credentails");
+      return res.status(200).json({code: 400, message: "Invalid Credentials Entered!",
+        data: null
+      });
+    }
+    else{
+      delete userCheck.userPassword;
+      res.status(200).json({code: 200, message: "LoggedIn Successful", data: userCheck});
+    }
+  } 
+  catch (e) {
     console.log(e);
-    res.json({code:500,data:null})
+    res.status(500).json({code: 500, message: "Internal Server Issue", data: null});
   }
 });
 
-app.post("/register",async (req,res)=>{
+app.post("/register", [
+    check("mobile").isNumeric().isLength({min: 10, max: 10}),
+    check("fullName").not().isEmpty(),
+    check("gender").not().isEmpty(),
+    check("area").not().isEmpty(),
+    check("dob").isDate(),
+    check("age").isNumeric().notEmpty(),
+    check("prefix").not().isEmpty()
+  ],
+  async (req, res) => {
   try{
-    if( (await checkUserExist(req.body)) === undefined){
-      const result = await createNewUser2(req.body) 
-      if(result !== undefined){
-        res.json({code:200,data:result})
-      }
-      else{
-        res.json({code:400,data:null})
-      }
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      console.log(errors);
+      return res.status(400).json({code: 400, message: "Invalid Values Passed", 
+        errors});
     }
     else{
-      res.json({code:202,data:"user Already exists!"})
+      const userExist = await checkUserExist(req.body);
+      // console.log(userExist);
+      if(userExist === undefined){
+        const result = await createNewUser2(req.body);
+        // console.log(result);
+        if(result !== undefined){
+          res.status(201).json({code: 201, data: result, 
+            message: "User Registered Successfully"});
+        }
+        else{
+          res.status(400).json({code: 400, data: null,
+            message: "User Creation Failed"});
+        }
+      }
+      else{
+        delete userExist.userPassword;
+        res.status(202).json({code: 202, data: userExist, 
+          message: "User Already Exists, please Login"});
+      }
     }
-  }catch(err){
-    console.log(err)
-    res.json({code:500,data:null})
+  }
+  catch(err){
+    console.log(err);
+    res.status(500).json({code: 500, data: null, message: "Internal Server Issue"});
   }
 })
 
-app.post("/getMemberDetails",async(req,res)=>{
+app.post("/getMemberDetails", [
+    check("familyId").not().isEmpty()
+  ], async(req, res) => {
   try{
-    const result = await client.query(`SELECT * FROM "memberslist" WHERE "familyId" = $1`,[req.body.familyId])
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.json({code: 404, message: "Missing/Invalid Family Id"});
+    }
+    const result = await client.query(`SELECT * FROM "memberslist" WHERE "familyId" = $1`, [req.body.familyId]);
     if(result.rowCount>0){
     res.json({code:200,data:result.rows})}
     else{
@@ -1152,13 +1170,23 @@ app.post('/admin/validate', [
         const email = adminDetails.rows[0].email;
         const pass = adminDetails.rows[0].password;
         const isValid = await checkPass(pass, req.body.password);
-        console.log(email, pass, isValid);
+        // console.log(email, pass, isValid);
 
         if(email !== req.body.email || !isValid){
           return res.status(400).json({code: 400, message: "Invalid Credentials"});
         }
         else{
-          return res.status(200).json({code: 200, message: "LoggedIn Successful"});
+          const token = jwt.sign(
+            {email},
+            process.env.JSON_TOKEN_KEY,
+            {expiresIn: '1h'}
+          );
+          return res.status(200).json({
+                                code: 200, 
+                                message: "LoggedIn Successful",
+                                email,
+                                token
+                              });
         }
       }
       catch(err){
@@ -1612,37 +1640,6 @@ app.post("/admin/postBlog", blogUpload, [
         let videoFile = "";
         let content = req.body.content;
 
-        // console.log(req.files)
-        // console.log(req.body)
-        // if(req.files !== undefined) {
-            
-        //     if(req.files.images !== undefined){
-        //         for(var file of req.files.images){
-        //             const result = await uploadFile(file)
-        //             images.push(result.Location)
-        //         }
-        //     }
-        //     else{ 
-        //         images = JSON.parse(req.body.imagesLink)
-        //     }
-
-        //     if(req.files.authorImage !== undefined){
-        //         const result = await uploadFile(req.files.authorImage[0])
-        //         authorImage = result.Location
-        //     }
-        //     else{
-        //         authorImage = req.body.oldAuthorImage
-        //     }
-
-        //     if(req.files.videoFile !== undefined){
-        //         const result = await uploadFile(req.files.videoFile[0])
-        //         videoFile = result.Location
-        //     }
-        //     else{
-        //         videoFile = req.body.oldVideoLink
-        //     }
-        // }
-
         if(req.body.isVideoBlog === 'true' && req.files.videoFile === undefined){
           return res.status(404).json({code: 404, message: "Media Files Missing"});
         }
@@ -1710,37 +1707,6 @@ app.post("/admin/postBlog", blogUpload, [
 
         // console.log(uploadResult.rows[0]);
         res.send(uploadResult.rows[0]).status(200);
-
-        // if(checkExist.rows.length > 0){
-        //     const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
-        //         req.body.author,
-        //         req.body.content,
-        //         req.body.blogHeading,
-        //         req.body.blogSubHeading,
-        //         authorImage,
-        //         req.body.isVideoBlog,
-        //         videoFile,
-        //         images,
-        //         req.body.blogId
-        //     ])
-        //     console.log(uploadResult.rows[0])
-        //     res.send(uploadResult.rows[0]).status(200)
-        // }
-        // else{
-        //     const uploadResult = await client.query(`UPDATE "aptblogs" SET "author" = $1, "content" = $2, "heading" = $3, "subHeading" = $4, "authorThumbnail" = $5, "isVideoBlog" = $6, "videoLink" = $7, "imagesLinks" = $8 where "blogId" = $9 returning *`,[
-        //         req.body.author,
-        //         req.body.content,
-        //         req.body.blogHeading,
-        //         req.body.blogSubHeading,
-        //         authorImage,
-        //         req.body.isVideoBlog,
-        //         videoFile,
-        //         images,
-        //         req.body.blogId
-        //     ])
-        //     console.log(uploadResult.rows[0])
-        //     res.send(uploadResult.rows[0]).status(200)
-        // }
     }
     catch(err){
         console.log(err)
@@ -1823,47 +1789,7 @@ app.post("/admin/insertBlog",
             new Date()
         ]);
 
-        // console.log(insertResult.rows[0]);
         res.send(insertResult.rows[0]).status(200)
-
-        // console.log("----------------\n", req);
-        // console.log(req.body);
-        // console.log(req.files);
-        // if(req.files !== undefined){
-        // if(req.files.images !== undefined){
-        //     for(var file of req.files.images){
-        //         const result = await uploadFile(file)
-        //         images.push(result.Location)
-        //     }
-        // }
-        // else{ images = null}
-        // if(req.files.authorImage !== undefined){
-        //     const result = await uploadFile(req.files.authorImage[0])
-        //     authorImage = result.Location
-        // }
-        // else{
-        //     authorImage = null
-        // }
-        // if(req.files.videoFile !== undefined){
-        //     const result = await uploadFile(req.files.videoFile[0])
-        //     videoFile = result.Location
-        // }
-        // else{
-        //     videoFile = null
-        // }}
-        // const insertResult = await client.query(`INSERT INTO "aptblogs" ("author","content","heading","subHeading","authorThumbnail","isVideoBlog","videoLink","imagesLinks") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,[
-        //     req.body.author,
-        //     req.body.content,
-        //     req.body.blogHeading,
-        //     req.body.blogSubHeading,
-        //     authorImage,
-        //     req.body.isVideoBlog,
-        //     videoFile,
-        //     images
-        // ])
-        // console.log(insertResult)
-        // res.send(insertResult.rows[0]).status(200)
-        // res.sendStatus(200);
     }
     catch(err){
         console.log(err)
@@ -2070,24 +1996,26 @@ app.post("/giftCoupon", async (req,res)=>{
 
 
 // apply coupon
-app.get("/applyCoupon", async (req,res)=>{
+app.get("/applyCoupon", async (req, res) => {
     try{
 
       // console.log(req.body);
       // console.log(req.query);
-      const verifyCoupon =  await client.query(`SELECT * FROM "aptcoupons" WHERE "couponCode" = $1`, [req.query.coupon]);
-      if(verifyCoupon.rows.length > 0) {
+      const verifyCoupon =  await client.query(`SELECT * FROM "aptcoupons" WHERE "couponCode" = $1`, 
+        [req.query.coupon]);
 
-        const userCheck = await client.query(`SELECT "couponsUsed" FROM "apttestuser" WHERE "contact" = $1`, [req.query.contact]);
+      if(verifyCoupon.rows.length > 0) {
+        const userCheck = await client.query(`SELECT "couponsUsed" FROM "apttestuser" 
+          WHERE "contact" = $1`, [req.query.contact]);
         if(userCheck.rows.length > 0){
-          console.log(userCheck.rows[0]);
+          // console.log(userCheck.rows[0]);
           const coupons = userCheck.rows[0].couponsUsed;
-          console.log(coupons);
+          // console.log(coupons);
           if(coupons === null || coupons.length === 0){
             res.json({
               coupon: req.query.coupon,
-              discount: parseInt(verifyCoupon.rows[0].couponPrice),
-              message: "Coupon successfully added",
+              discount: parseInt(verifyCoupon.rows[0].couponPercent),
+              message: `Yay, you got ${parseInt(verifyCoupon.rows[0].couponPercent)}% off !!`,
               code: 200
             });
           }
@@ -2098,14 +2026,14 @@ app.get("/applyCoupon", async (req,res)=>{
                 coupon: req.query.coupon,
                 discount: 0,
                 message: "Coupon already used!",
-                code: 405
+                code: 400
               });
             }
             else{
               res.json({
                 coupon: req.query.coupon,
-                discount: parseInt(verifyCoupon.rows[0].couponPrice),
-                message: "Coupon successfully added",
+                discount: parseInt(verifyCoupon.rows[0].couponPercent),
+                message: `Yay, you got ${parseInt(verifyCoupon.rows[0].couponPercent)}% off !!`,
                 code: 200
               });
             }
@@ -2114,8 +2042,8 @@ app.get("/applyCoupon", async (req,res)=>{
         else{
           res.json({
             coupon: req.query.coupon,
-            discount: parseInt(verifyCoupon.rows[0].couponPrice),
-            message: "Coupon successfully added",
+            discount: parseInt(verifyCoupon.rows[0].couponPercent),
+            message: `Yay, you got ${parseInt(verifyCoupon.rows[0].couponPercent)}% off !!`,
             code: 200
           });
         }
