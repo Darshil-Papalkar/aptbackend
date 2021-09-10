@@ -543,7 +543,7 @@ const checkUserExist = async (data) => {
 }
 
 const createNewUser = async (data) => {
-  // console.log("New User Data - ", data);
+  console.log("New User Data - ", data);
   const passdate = new Date(data.dob).getFullYear();
   let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
   password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
@@ -559,7 +559,7 @@ const createNewUser = async (data) => {
 }
 
 const updateExistingUser = async (data) => {
-  // console.log("Existing User Data - ", data);
+  console.log("Existing User Data - ", data);
   const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
                                       "couponsUsed" = $4, "age" = $5, "gender" = $6, "email" = $7, "address" = $8, "prefix" = $9
                                       WHERE "contact" = $10`,[
@@ -684,7 +684,7 @@ APT Diagnostics`;
   catch(err){
     res.json({message: err.message, code: err.code, otp: err.otp, mobile: err.mobile});
   }
-})
+});
 
 // booking otp verification
 
@@ -755,6 +755,45 @@ app.post("/saveBeforeBooking",async(req,res)=>{
   }
 });
 
+app.post("/updatePassword", [
+      check("password").isLength({min: 8}),
+      check("mobile").isNumeric().isLength({min: 10, max: 10})
+    ],  async (req, res) => {
+
+      const errors = validationResult(req);
+      if(!errors.isEmpty()){
+        console.log(errors);
+        return res.json({code: 400, message: "Invalid values passed"});
+      }
+
+      try{
+        const userExist = await checkUserExist(req.body);
+        if(!userExist){
+          console.log("Not Exists - ", userExist);
+          return res.json({code: 404, message: "User not found, please register !"});
+        }
+        else{
+          console.log("User Exists - ", userExist);
+
+          const userUpdate = await client.query(`UPDATE "apttestuser" SET "userPassword" = $1 
+                                                WHERE "contact" = $2`, [
+                                                  req.body.password,
+                                                  req.body.mobile
+                                                ]);
+          console.log(userUpdate);
+          if(userUpdate.rowCount === 1){
+            res.json({code: 200, message: "Password updated successfully!"});
+          }
+          else{
+            res.json({code: 400, message: "No such user found!"});
+          }
+        };
+      }
+      catch(err){
+        console.log(err);
+        res.json({code: 500, message: "Internal Server Error, please try again!"});
+      }
+});
 
 app.post("/bookAppointment/lab", async (req, res) => {
     try{
@@ -790,6 +829,8 @@ app.post("/bookAppointment/lab", async (req, res) => {
       // console.log("Normal Member");
 
       const userData = await checkUserExist(req.body.supportingData);
+      console.log(userData);
+
       if(userData !== undefined) //user exist
       {
         let billList = userData.billList;
@@ -837,6 +878,8 @@ app.post("/bookAppointment/lab", async (req, res) => {
       } 
       else //user not exist
       {
+        console.log("Supporting Data", req.body.supportingData);
+
         const data2 = {
           "mobile": req.body.supportingData.mobile,
           "email": req.body.supportingData.email,
@@ -1222,7 +1265,7 @@ APT Diagnostics`;
         }
         else{
           // console.log("not same mobile");
-          res.status(400).json({code: 400, isValidPhone: false, message: "Contact Number not matched!"});
+          res.json({code: 400, isValidPhone: false, message: "Contact Number not matched!"});
           // return res.status(400).json({code: 400, errors, isValidPhone: false, message: "Invalid Contact Number"});
         }
       }
@@ -2215,7 +2258,7 @@ const setSlot = async (data) => {
 
 // manage flebo
 
-app.get("/getFlebo",async (req,res)=>{
+app.get("/getFlebo",async (req, res) => {
   try{
     // sendMail()
     const result = await client.query(`SELECT * FROM "aptutils"`);
