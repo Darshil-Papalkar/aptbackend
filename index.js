@@ -31,8 +31,7 @@ const sendMail = async (to,text,template)=>{
   }
 
   sgMail.send(msg).then(() => {console.log('Email sent')}).catch((error) => {console.error(error)})
-
-}
+};
 
 // db client
 const client = new Client({
@@ -543,23 +542,23 @@ const checkUserExist = async (data) => {
 }
 
 const createNewUser = async (data) => {
-  console.log("New User Data - ", data);
+  // console.log("New User Data - ", data);
   const passdate = new Date(data.dob).getFullYear();
   let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
   password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
   const response = await client.query(`INSERT INTO "apttestuser" 
                                           ("userName", "dob", "email", "gender", "appointmentList", "billList", "contact", 
-                                          "address", "userPassword", "reportList", "couponsUsed", "age", "prefix") 
-                                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,[
+                                          "address", "userPassword", "reportList", "couponsUsed", "age", "prefix", "familyId") 
+                                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,[
     data.fullName, data.dob, data.email, data.gender, data.appointmentList, data.billList,
-    data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix
+    data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix, data.familyId
   ]);
   await welcomeNewUser(data);
   return response.rowCount === 1;
 }
 
 const updateExistingUser = async (data) => {
-  console.log("Existing User Data - ", data);
+  // console.log("Existing User Data - ", data);
   const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
                                       "couponsUsed" = $4, "age" = $5, "gender" = $6, "email" = $7, "address" = $8, "prefix" = $9
                                       WHERE "contact" = $10`,[
@@ -829,7 +828,7 @@ app.post("/bookAppointment/lab", async (req, res) => {
       // console.log("Normal Member");
 
       const userData = await checkUserExist(req.body.supportingData);
-      console.log(userData);
+      // console.log(userData);
 
       if(userData !== undefined) //user exist
       {
@@ -878,7 +877,7 @@ app.post("/bookAppointment/lab", async (req, res) => {
       } 
       else //user not exist
       {
-        console.log("Supporting Data", req.body.supportingData);
+        // console.log("Supporting Data", req.body.supportingData);
 
         const data2 = {
           "mobile": req.body.supportingData.mobile,
@@ -892,7 +891,8 @@ app.post("/bookAppointment/lab", async (req, res) => {
           "reportList": newReportDetails,
           "couponsUsed": [req.body.supportingData.coupon],
           "age": req.body.supportingData.age,
-          "prefix": req.body.supportingData.prefix
+          "prefix": req.body.supportingData.prefix,
+          "familyId": req.body.supportingData.familyId
         };
 
         if(await createNewUser(data2)){
@@ -1763,7 +1763,7 @@ app.post("quickLogin",async(req,res)=>{
     res.json({code:200,data:result.rows[0]})
   }catch(err){console.log(err)
   res.json({code:500,data:err})}
-})
+});
 
 //Admin- Add blog
 const insertBlogUpload = upload.fields([
@@ -1838,8 +1838,7 @@ app.post("/admin/insertBlog",
         console.log(err)
         res.send("Internal Server Error").status(500)
     }
-})
-
+});
 
 app.post("/admin/uploadTest",async (req,res)=>{
     try{
@@ -1860,7 +1859,8 @@ app.post("/admin/uploadTest",async (req,res)=>{
         console.log(err)
         res.send("failed").status(500)
     }
-})
+});
+
 //Admin - insertBlogContent
 app.post("/admin/insertBlogContent", async (req,res) => {
     console.log("done")
@@ -1877,7 +1877,7 @@ app.post("/admin/insertBlogContent", async (req,res) => {
         console.log(err)
         res.send("Internal Server Error").status(500)
     }
-})
+});
 
 //getAllBlogs
 app.get("/allblogs", async(req, res) => {
@@ -1901,7 +1901,7 @@ app.get("/allblogs", async(req, res) => {
         console.log(e)
         res.send("Internal Server Error").status(500)
     }
-})
+});
 
 app.delete("/admin/deletePackage", [
           check("packageID")
