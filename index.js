@@ -1138,7 +1138,8 @@ app.post("/getMemberDetails", [
 app.post("/storeReport", async (req, res) => {
   try {
     const result = await client.query(
-      "INSERT INTO apttestreports VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+      `INSERT INTO "apttestreports" VALUES 
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         req.body["CentreReportId"],
         req.body["labId"],
@@ -1151,13 +1152,28 @@ app.post("/storeReport", async (req, res) => {
         req.body["Contact No"],
         req.body["testID"],
         req.body["reportBase64"],
+        req.body["Patient Name"],
+        req.body["Test Name"],
+        req.body["Gender"],
+        req.body["Age"],
+        req.body["testCode"]
       ]
     );
-    // console.log(result)
-    res.status(200).send("successful");
+    if(result.rowCount > 0){
+      const data = {
+        fullName: req.body['Patient Name'],
+
+      };
+      const id = req.body["billId"];
+      billID(data, id);
+      res.status(200).send("Saved Successfully");
+    }
+    else{
+      res.status(400).send("Couldn't update the table");
+    }
   } catch (e) {
     console.log(e);
-    res.status(400).send("failed");
+    res.status(500).send("Something went wrong");
   }
 });
 
