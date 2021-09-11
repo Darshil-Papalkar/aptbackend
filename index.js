@@ -515,10 +515,11 @@ Your appointment has been booked successfully with ${user} on ${date} at ${(data
 
 const billID = async (data, id) => {
   console.log("generating bill sms");
+  // console.log(data, id);
   try{
     // console.log(id);
-    const here = 'https://www.google.com/'
-    const message = `Hi ${data.fullName}, Your Bill ID is ${id}. Please use this Bill ID to download the reports with a single click from ${here}.
+    const here = 'http://aptdiagnostics.com:3000';
+    const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
 
 APT Diagnostics`;
 
@@ -1162,10 +1163,10 @@ app.post("/storeReport", async (req, res) => {
     if(result.rowCount > 0){
       const data = {
         fullName: req.body['Patient Name'],
-
+        mobile: req.body["Contact No"]
       };
       const id = req.body["billId"];
-      billID(data, id);
+      await billID(data, id);
       res.status(200).send("Saved Successfully");
     }
     else{
