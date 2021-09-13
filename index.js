@@ -21,16 +21,31 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 
 // mail client
-const sendMail = async (to,text,template)=>{
+const sendMail = async (subject, to, text, template) => {
+  console.log('generating new user email');
   const msg = {
     to, // Change to your recipient
     from: 'info@aptdiagnostics.com', // Change to your verified sender
-    subject: 'Sending with SendGrid is Fun',
+    subject,
     text,
-    html:template,
+    html: template,
   }
 
-  sgMail.send(msg).then(() => {console.log('Email sent')}).catch((error) => {console.error(error)})
+  sgMail
+    .send(msg)
+    .then((response) => {
+      console.log('Email sent');
+      console.log(response);
+    }, 
+      err => { 
+        console.log("Error Occurred: ", err);
+        if(err.response){
+          console.err(err.response.body);
+        }
+    })
+    .catch((error) => {
+      console.error(error);
+    })
 };
 
 // db client
@@ -554,6 +569,16 @@ const createNewUser = async (data) => {
     data.fullName, data.dob, data.email, data.gender, data.appointmentList, data.billList,
     data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix, data.familyId
   ]);
+  if(data.email.trim().length > 0){
+    const subject = 'Welcome to APT Diagnostics';
+    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
+Do not forget to wear mask and maintain social distancing.
+\n- APT Diagnostics`;
+    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br/>Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
+'Do not forget to wear mask and maintain social distancing. ' + 
+'<br /><br />- APT Diagnostics';
+    sendMail(subject, data.email, message, htmlText);
+  }
   await welcomeNewUser(data);
   return response.rowCount === 1;
 }
@@ -594,7 +619,16 @@ const createNewUser2 = async (data) => {
       data.prefix
     ]
   );
-
+  if(data.email.trim().length > 0){
+    const subject = 'Welcome to APT Diagnostics';
+    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
+Do not forget to wear mask and maintain social distancing.
+\n- APT Diagnostics`;
+    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br />Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
+'Do not forget to wear mask and maintain social distancing. ' + 
+'<br /><br />- APT Diagnostics';
+    sendMail(subject, data.email, message, htmlText);
+  }
   await welcomeNewUser(data);
   return response.rows[0];
 };
@@ -688,12 +722,18 @@ APT Diagnostics`;
 
 // booking otp verification
 
-app.get('/bookingVerification', async (req, res, next) => {
+app.get('/bookingVerification', [
+    check("mobile").isLength({max: 10, min: 10})
+], async (req, res, next) => {
 
   try{
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.json({isValidPhone: false, mobile: req.query.mobile, message: 'Invalid mobile number'});
+    }
     const mobile = req.query.mobile;
     if(mobile.length !== 10) {
-      res.status(400).json({isValidPhone: false});
+      return res.json({isValidPhone: false});
     }
     else{
       let otp = Math.floor(Math.random()*10000) + 5000;
@@ -708,6 +748,31 @@ APT Diagnostics`;
   }
   catch(err){
     res.status(401).send('Something Went Wrong' + err);
+  }
+});
+
+app.get('bookingVerificationEmail', [
+  check("email").normalizeEmail().isEmail()
+], async (req, res) => {
+  try{
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.json({isValidPhone: false, result: errors, message: 'Invalid email address'});
+    }
+    const email = req.query.email;
+    let otp = Math.floor(Math.random()*10000) + 5000;
+    const subject = 'OTP Verification'
+    const message = `Hi, Your OTP for email verification is ${otp}
+    
+APT Diagnostics`;
+    const htmlText = 'Hi, Your OTP for email verification is <strong>' + otp + '</strong> <br /><br/>APT Diagnostics'; 
+    await sendMail(subject, email.trim(), message, htmlText);
+    otp = await bcrypt.hash(otp.toString(), parseInt(process.env.SMS_CLIENT_HASH_SALT));
+    res.status(200).json({code: 200, result: "Successfully Sent", codeData: otp, email: email, isValidPhone: true, message: "OTP sent successfully!"});
+    
+  }
+  catch(err){
+
   }
 });
 
@@ -1181,16 +1246,31 @@ app.post("/storeReport", async (req, res) => {
 
 app.get("/getReport", async (req, res) => {
   try {
+    // console.log(req.query);
     const result = await client.query(
-      "SELECT * FROM apttestreports WHERE contact = $1",
-      [req.query.contact]
+      `SELECT * FROM "apttestreports" WHERE "contact" = $1 and "billId" = $2`, [req.query.contact, req.query.billId]
     );
+    // console.log(result.rows);
     res.json(result.rows);
-  } catch (e) {
+  } 
+  catch (e) {
     console.log(e);
-    res.status(400).send("failed");
+    res.status(400).json(e).send("failed");
   }
 });
+
+app.get("/getAllReport", async (req, res) => {
+  try{
+    const result = await client.query(
+      `SELECT * FROM "apttestreports"`
+    );
+    res.json(result.rows);
+  }
+  catch(err){
+    console.log(err);
+    res.status(500).json(err);
+  }
+})
 
 //newly created for blog section
 app.get("/getAllBlogs", async (req, res) => {
@@ -1265,7 +1345,7 @@ app.post('/admin/mobileOtp', [
           return res.status(400).json({code: 400, errors, isValidPhone: false, message: "Invalid Contact Number"});
         }
 
-        const adminDetails = await client.query(`SELECT ("mobile") FROM "aptadmin"`);
+        const adminDetails = await client.query(`SELECT "mobile" FROM "aptadmin"`);
         // console.log(adminDetails.rows[0].mobile);
         // console.log(req.body.mobile);
 
@@ -1290,6 +1370,42 @@ APT Diagnostics`;
         console.log(err);
         res.status(401).json({code: 401, message: "Internal Server Issue"});
       }
+});
+
+app.post('/admin/emailOtp', [
+  check("email").normalizeEmail().isEmail()
+], async (req, res) => {
+  try{
+    
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      return res.json({code: 400, errors, isValidPhone: false, message: "Invalid Email Address"});
+    }
+
+    const adminDetails = await client.query(`SELECT "email" FROM "aptadmin"`);
+    // console.log(adminDetails.rows[0]);
+    // console.log(req.body.mobile);
+
+    if(req.body.email === adminDetails.rows[0].email){
+      // console.log("same mobile");
+      let otp = Math.floor(Math.random()*10000) + 5000;
+      const subject = 'OTP Verification'
+      const message = `Hi, Your OTP for email verification is ${otp}
+      
+APT Diagnostics`;
+      const htmlText = 'Hi, Your OTP for email verification is <strong>' + otp + '</strong> <br /><br/>APT Diagnostics'; 
+      await sendMail(subject, req.body.email.trim(), message, htmlText);
+      otp = await bcrypt.hash(otp.toString(), parseInt(process.env.SMS_CLIENT_HASH_SALT));
+      res.status(200).json({code: 200, result: "Successfully Sent", codeData: otp, email: req.body.email, isValidPhone: true, message: "OTP sent successfully!"});
+    }
+    else{
+      res.json({code: 400, isValidPhone: false, message: "Email Address not matched!"});
+    }
+  }
+  catch(err){
+    console.log(err);
+    res.json({code: 401, message: "Internal Server Issue"});
+  }
 });
 
 app.post('/admin/updatePassword', [
@@ -2437,8 +2553,13 @@ app.post("/postFeedback",
                 const uploadResult = await uploadFile(req.file);
                 attachment = uploadResult.Location;
               }
-              const result = await client.query(`INSERT INTO "aptquery" VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [data.name, data.email, data.type, data.contact, data.query, attachment]);
+              const subject = 'New Feedback Response';
+              const message = `Mr/Mrs ${req.body.name} has posted feedback. Check it out!`;
+              const htmlText = 'Mr/Mrs <strong>' + req.body.name + '</strong> has posted feedback. Check it out!';
+              const to = 'team@aptdiagnostics.com';
+              await sendMail(subject, to, message, htmlText);
+              const result = await client.query(`INSERT INTO "aptquery" VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [data.name, data.email, data.type, data.contact, data.query, attachment, new Date()]);
               res.send(result.data).status(200);
             }
             catch(err){
@@ -2478,10 +2599,16 @@ app.post("/postContactus",
           }
 ); 
 
-app.post("/requestCallback", async (req,res)=>{
+app.post("/requestCallback", async (req, res) => {
   try{
-    console.log(req.body)
-    const response = await client.query(`INSERT INTO "callbackrequests" VALUES ($1 , $2)`,[req.body.name, req.body.number])
+    // console.log(req.body);
+    const subject = 'New Callback Request';
+    const message = `Mr/Mrs ${req.body.name} has requested a callback on number ${req.body.number}`;
+    const htmlText = 'Mr/Mrs <strong>' + req.body.name + '</strong> has requested a callback on number <strong>' + req.body.number + '</strong>';
+    const to = 'team@aptdiagnostics.com';
+    await sendMail(subject, to, message, htmlText);
+    await client.query(`INSERT INTO "callbackrequests" VALUES ($1 , $2, $3)`,
+        [req.body.name, req.body.number, new Date()]);
     res.json({code:200})
   }catch(err){
     console.log(err)
