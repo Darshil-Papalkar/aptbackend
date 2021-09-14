@@ -35,7 +35,7 @@ const sendMail = async (subject, to, text, template) => {
     .send(msg)
     .then((response) => {
       console.log('Email sent');
-      console.log(response);
+      // console.log(response);
     }, 
       err => { 
         console.log("Error Occurred: ", err);
@@ -711,7 +711,7 @@ app.get("/prescriptionOtp", async (req, res, next) => {
 APT Diagnostics`;
       otp = await bcrypt.hash(otp.toString(), parseInt(process.env.SMS_CLIENT_HASH_SALT));
       await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${mobile}&tempid=${process.env.SMS_CLIENT_PRESCRIPTION_OTP_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
-          .then(response => {res.json({message: response.data, code: 200, otp: otp, mobile: mobile})})
+          .then(response => {console.log("otp sent"); res.json({message: response.data, code: 200, otp: otp, mobile: mobile})})
           .catch(err => {console.log(err); res.json({message: "Something went wrong", code: 500, otp: null, mobile: mobile})});
     }
   }
@@ -1589,7 +1589,7 @@ app.post("/admin/postPackage",
       );
     }
     // console.log(result.data);
-    res.status(200).json({data: result.data});
+    res.status(200).json({data: result.rows});
   } catch (err) {
     console.log(err);
     res.status(500).json({code: 500, message: err});
@@ -1752,7 +1752,7 @@ app.post("/admin/postTest",
         ]
       );
     }
-    res.status(200).json({data: result.data});
+    res.status(200).json({data: result.rows});
   } catch (err) {
     console.log(err);
     res.status(500).json({code: 500, message: err});
@@ -2514,14 +2514,24 @@ app.post("/postPrescription",
               const data = req.body;
               const uploadResult = await uploadFile(req.file);
               const attachment = uploadResult.Location;
-              const result = await client.query(`INSERT INTO "aptprescription" VALUES ($1, $2, $3)`, [
-                data.name, data.mobile, attachment
+              const date = new Date();
+              const subject =  `New User Prescription_${data.name}`;
+              const message = `${data.name} has uploaded a prescription. \nClick on the link below -
+               \n\n ${attachment}`;
+              const htmlText = '<strong>' + data.name + '</strong> has uploaded a prescription. <br />Click on the link below - <br/><br/>' + 
+              attachment + "<br/><br/>Date - " + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+              // const to = 'anchitkumar100@gmail.com';
+              const to = 'team@aptdiagnostics.com';
+              await sendMail(subject, to, message, htmlText);
+              const result = await client.query(`INSERT INTO "aptprescription" 
+                VALUES ($1, $2, $3, $4)`, [
+                data.name, data.mobile, attachment, date
               ]);
-              return res.send(result.data).status(200);
+              return res.status(200).send(result.rowCount);
             }
             catch(err){
               console.log(err);
-              res.send(err).status(500);
+              res.status(500).send(err);
             }
           }
 );
@@ -2553,14 +2563,17 @@ app.post("/postFeedback",
                 const uploadResult = await uploadFile(req.file);
                 attachment = uploadResult.Location;
               }
-              const subject = 'New Feedback Response';
-              const message = `Mr/Mrs ${req.body.name} has posted feedback. Check it out!`;
-              const htmlText = 'Mr/Mrs <strong>' + req.body.name + '</strong> has posted feedback. Check it out!';
+              const date = new Date();
+              const subject = `New Feedback Response_${data.type}`;
+              const message = `${req.body.name} has posted feedback. Check it out!\n Query - ${data.query}`;
+              const htmlText = '<strong>' + req.body.name + '</strong> has posted feedback. Check it out! <br/> Query - ' 
+              + data.query + "<br/><br/>Date - " + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+              // const to = 'anchitkumar100@gmail.com';
               const to = 'team@aptdiagnostics.com';
               await sendMail(subject, to, message, htmlText);
               const result = await client.query(`INSERT INTO "aptquery" VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [data.name, data.email, data.type, data.contact, data.query, attachment, new Date()]);
-              res.send(result.data).status(200);
+                    [data.name, data.email, data.type, data.contact, data.query, attachment, date]);
+              res.send(result.rows).status(200);
             }
             catch(err){
               console.log(err);
@@ -2580,17 +2593,22 @@ app.post("/postContactus",
 
           async(req, res) => {
             try{  
-
               // console.log(req.body);
               const errors = validationResult(req);
               if(!errors.isEmpty()){
                 return res.status(400).json({'errors': errors});
-              }
-
+              }              
+              const date = new Date();
               const data = req.body;
-              const result = await client.query(`INSERT INTO "aptcontactus" VALUES ($1, $2, $3, $4, $5)`,
-                      [data.name, data.email, data.contact, data.queryType, data.queryDescription]);
-              res.send(result.data).status(200);
+              const subject = `New Contact-Us Request_${data.queryType}`;
+              const message =  `${data.name} has requested to contact him/her. Check it out! \n Query Description - ${data.queryDescription}`;
+              const htmlText = 'Mr/Mrs <strong>' + data.name + '</strong> has requested to contact him/her. Check it out! <br /> Query Description - ' + data.queryDescription + "<br/><br/>Date - " + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+              // const to = 'anchitkumar100@gmail.com';
+              const to = 'team@aptdiagnostics.com';
+              await sendMail(subject, to, message, htmlText);
+              const result = await client.query(`INSERT INTO "aptcontactus" VALUES ($1, $2, $3, $4, $5, $6)`,
+                      [data.name, data.email, data.contact, data.queryType, data.queryDescription, date]);
+              res.send(result.rows).status(200);
             }
             catch(err){
               console.log(err);
@@ -2602,13 +2620,15 @@ app.post("/postContactus",
 app.post("/requestCallback", async (req, res) => {
   try{
     // console.log(req.body);
+    const date = new Date();
     const subject = 'New Callback Request';
     const message = `Mr/Mrs ${req.body.name} has requested a callback on number ${req.body.number}`;
-    const htmlText = 'Mr/Mrs <strong>' + req.body.name + '</strong> has requested a callback on number <strong>' + req.body.number + '</strong>';
+    const htmlText = 'Mr/Mrs <strong>' + req.body.name + '</strong> has requested a callback on number <strong>' + req.body.number + '</strong> <br/><br/>Date - ' + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+    // const to = 'anchitkumar100@gmail.com';
     const to = 'team@aptdiagnostics.com';
     await sendMail(subject, to, message, htmlText);
     await client.query(`INSERT INTO "callbackrequests" VALUES ($1 , $2, $3)`,
-        [req.body.name, req.body.number, new Date()]);
+        [req.body.name, req.body.number, date]);
     res.json({code:200})
   }catch(err){
     console.log(err)
