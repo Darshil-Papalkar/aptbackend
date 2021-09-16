@@ -19,7 +19,6 @@ app.use(express.urlencoded({extended: true}));
 app.use(cors());
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-
 // mail client
 const sendMail = async (subject, to, text, template) => {
   console.log('generating new user email');
@@ -47,6 +46,42 @@ const sendMail = async (subject, to, text, template) => {
       console.error(error);
     })
 };
+
+const sendTemplateMail = async (userEmail, userName, template_id) => {
+  try{
+    console.log("generating new template mail");
+    const headers = {
+      'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
+      'Content-Type': 'application/json'
+    };
+  
+    const data = {
+      'from': {
+        'email': "info@aptdiagnostics.com"
+      },
+      'personalizations': [
+        {
+          'to': [
+            {
+              'email': userEmail
+            }
+          ],
+          'dynamic_template_data': {
+            'first_name': userName
+          }
+        }
+      ],
+      'template_id': template_id
+    };
+    const result = await axios.post('https://api.sendgrid.com/v3/mail/send', data, { headers });
+    if(result.status !== 202){
+      throw result;
+    }
+  }
+  catch(err){
+    console.log(err);
+  }
+}
 
 // db client
 const client = new Client({
@@ -138,15 +173,18 @@ app.post("/addSubscriber", [
           else{
             const response = await client.query(`INSERT INTO "aptsubscribers" ("email", "name", "dateTime") 
               VALUES ($1, $2, $3)`, [email, req.body.name, new Date()]);
-            if(response.rowCount >= 1)
+            if(response.rowCount >= 1){
+              await sendTemplateMail(email, req.body.name, String(process.env.SUBSCRIBE_TEMPLATE_ID));
               res.status(201).json({message: "Successfully Subscribed!", code: 201});
+            }
             else{
               res.status(500).json({message: "Sever Issue, please try again later!", code: 500});
             }
           }
         }
         catch(err){
-          console.log(err);
+          console.log("Error Occured: \n");
+          console.log(err.response.data.errors);
           res.status(500).json({message: "Sever Issue, please try again later!", code: 500});
         }
 });
@@ -1203,26 +1241,58 @@ app.post("/getMemberDetails", [
 // DO NOT CHANGE
 app.post("/storeReport", async (req, res) => {
   try {
+    // console.log(req.body);
+    let CentreReportId = '', testID = '', testName = '';
+    
+    req.body.CentreReportId.map((id, index) => {
+      CentreReportId += `${id}`;
+      if(index+1 < req.body.CentreReportId.length){
+        CentreReportId += ',';
+      }
+      CentreReportId += ' ';
+    });
+
+    req.body.testID.map((item, index) => {
+      testID += `${item}`;
+      if(index+1 < req.body.testID.length){
+        testID += ',';
+      }
+      testID += ' ';
+    });
+
+    req.body.testName.map((item, index) => {
+      testName += `${item}`;
+      if(index+1 < req.body.testName.length){
+        testName += ',';
+      }
+      testName += ' ';
+    });
+
+    // console.log(CentreReportId);
+    // console.log(testID);
+    // console.log(testName);
+
+    const date = new Date();
+
     const result = await client.query(
       `INSERT INTO "apttestreports" VALUES 
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
-        req.body["CentreReportId"],
-        req.body["labId"],
+        CentreReportId,
+        req.body["labPatientId"],
         req.body["billId"],
-        req.body["dictionaryId"],
-        req.body["Report Id"],
-        req.body["reportDate"],
+        date.toDateString() + ' ' + date.toTimeString(),
         req.body["Patient Id"],
-        req.body["labReportId"],
         req.body["Contact No"],
-        req.body["testID"],
+        testID,
         req.body["reportBase64"],
         req.body["Patient Name"],
-        req.body["Test Name"],
+        testName,
         req.body["Gender"],
         req.body["Age"],
-        req.body["testCode"]
+        req.body["Email"],
+        req.body["apiKey"],
+        req.body["apiUser"]
       ]
     );
     if(result.rowCount > 0){
@@ -2297,6 +2367,7 @@ app.get("/getPackages", async(req, res) => {
   try{
     const response = await client.query(`SELECT * FROM "aptpackages"  WHERE "isSpecial" = 'true' `);
     const data = response.rows;
+    // console.log(data);
     res.send({code:200,data}).status(200);
   }
   catch(e){
@@ -2527,11 +2598,13 @@ app.post("/postPrescription",
                 VALUES ($1, $2, $3, $4)`, [
                 data.name, data.mobile, attachment, date
               ]);
-              return res.status(200).send(result.rowCount);
+              // return res.status(200).send(result.rowCount);
+              return res.status(200).json({valid: result.rowCount, message: "Prescriptions uploaded successfully!"});
             }
             catch(err){
               console.log(err);
-              res.status(500).send(err);
+              // res.status(500).send(err);
+              res.json({valid: 0, message: err});
             }
           }
 );
@@ -2573,11 +2646,11 @@ app.post("/postFeedback",
               await sendMail(subject, to, message, htmlText);
               const result = await client.query(`INSERT INTO "aptquery" VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [data.name, data.email, data.type, data.contact, data.query, attachment, date]);
-              res.send(result.rows).status(200);
+              res.status(200).json({valid: result.rowCount, message: "Thanks for your feedback"});
             }
             catch(err){
               console.log(err);
-              res.status(500);
+              res.json({valid: 0, message: err});
             }
           }
 );
@@ -2608,11 +2681,11 @@ app.post("/postContactus",
               await sendMail(subject, to, message, htmlText);
               const result = await client.query(`INSERT INTO "aptcontactus" VALUES ($1, $2, $3, $4, $5, $6)`,
                       [data.name, data.email, data.contact, data.queryType, data.queryDescription, date]);
-              res.send(result.rows).status(200);
+              res.status(200).json({valid: result.rowCount, message: "We'll soon contact you!"});
             }
             catch(err){
               console.log(err);
-              res.status(500);
+              res.json({valid: 0, message: err});
             }
           }
 ); 
@@ -2627,12 +2700,12 @@ app.post("/requestCallback", async (req, res) => {
     // const to = 'anchitkumar100@gmail.com';
     const to = 'team@aptdiagnostics.com';
     await sendMail(subject, to, message, htmlText);
-    await client.query(`INSERT INTO "callbackrequests" VALUES ($1 , $2, $3)`,
+    const result = await client.query(`INSERT INTO "callbackrequests" VALUES ($1 , $2, $3)`,
         [req.body.name, req.body.number, date]);
-    res.json({code:200})
+    res.json({valid: result.rowCount, message: "We'll reach you soon!"});
   }catch(err){
-    console.log(err)
-    res.json({code:500})
+    console.log(err);
+    res.json({valid: 0, message: err});
   }
 })
 
