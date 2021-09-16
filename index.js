@@ -1272,7 +1272,8 @@ app.post("/storeReport", async (req, res) => {
     // console.log(testID);
     // console.log(testName);
 
-    const date = new Date();
+    let date = new Date();
+    date = date.getDate() + '/' + (date.getMonth()+1) + '/' + date.getFullYear() + " T-" + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
 
     const result = await client.query(
       `INSERT INTO "apttestreports" VALUES 
@@ -1281,7 +1282,7 @@ app.post("/storeReport", async (req, res) => {
         CentreReportId,
         req.body["labPatientId"],
         req.body["billId"],
-        date.toDateString() + ' ' + date.toTimeString(),
+        date,
         req.body["Patient Id"],
         req.body["Contact No"],
         testID,
