@@ -1242,31 +1242,31 @@ app.post("/getMemberDetails", [
 app.post("/storeReport", async (req, res) => {
   try {
     // console.log(req.body);
-    let CentreReportId = '', testID = '', testName = '';
+    // let CentreReportId = '', testID = '', testName = '';
     
-    req.body.CentreReportId.map((id, index) => {
-      CentreReportId += `${id}`;
-      if(index+1 < req.body.CentreReportId.length){
-        CentreReportId += ',';
-      }
-      CentreReportId += ' ';
-    });
+    // req.body.CentreReportId.map((id, index) => {
+    //   CentreReportId += `${id}`;
+    //   if(index+1 < req.body.CentreReportId.length){
+    //     CentreReportId += ',';
+    //   }
+    //   CentreReportId += ' ';
+    // });
 
-    req.body.testID.map((item, index) => {
-      testID += `${item}`;
-      if(index+1 < req.body.testID.length){
-        testID += ',';
-      }
-      testID += ' ';
-    });
+    // req.body.testID.map((item, index) => {
+    //   testID += `${item}`;
+    //   if(index+1 < req.body.testID.length){
+    //     testID += ',';
+    //   }
+    //   testID += ' ';
+    // });
 
-    req.body.testName.map((item, index) => {
-      testName += `${item}`;
-      if(index+1 < req.body.testName.length){
-        testName += ',';
-      }
-      testName += ' ';
-    });
+    // req.body.testName.map((item, index) => {
+    //   testName += `${item}`;
+    //   if(index+1 < req.body.testName.length){
+    //     testName += ',';
+    //   }
+    //   testName += ' ';
+    // });
 
     // console.log(CentreReportId);
     // console.log(testID);
@@ -1279,16 +1279,16 @@ app.post("/storeReport", async (req, res) => {
       `INSERT INTO "apttestreports" VALUES 
         ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
-        CentreReportId,
+        req.body.CentreReportId,
         req.body["labPatientId"],
         req.body["billId"],
         date,
         req.body["Patient Id"],
         req.body["Contact No"],
-        testID,
+        req.body.testID,
         req.body["reportBase64"],
         req.body["Patient Name"],
-        testName,
+        req.body.testName,
         req.body["Gender"],
         req.body["Age"],
         req.body["Email"],
@@ -2369,7 +2369,7 @@ app.get("/getPackages", async(req, res) => {
     const response = await client.query(`SELECT * FROM "aptpackages"  WHERE "isSpecial" = 'true' `);
     const data = response.rows;
     // console.log(data);
-    res.send({code:200,data}).status(200);
+    res.send({code:200, data}).status(200);
   }
   catch(e){
     console.log(e);
