@@ -14,8 +14,8 @@ const jwt = require('jsonwebtoken');
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({extended: true}));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({extended: true, limit: '50mb'}));
 app.use(cors());
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
@@ -571,7 +571,7 @@ const billID = async (data, id) => {
   // console.log(data, id);
   try{
     // console.log(id);
-    const here = 'http://aptdiagnostics.com:3000';
+    const here = 'https://aptdiagnostics.com/';
     const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
 
 APT Diagnostics`;
@@ -1241,7 +1241,7 @@ app.post("/getMemberDetails", [
 // DO NOT CHANGE
 app.post("/storeReport", async (req, res) => {
   try {
-    // console.log(req.body);
+    console.log(req.body);
     // let CentreReportId = '', testID = '', testName = '';
     
     // req.body.CentreReportId.map((id, index) => {
