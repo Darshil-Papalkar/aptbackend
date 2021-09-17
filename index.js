@@ -11,6 +11,7 @@ const sgMail = require('@sendgrid/mail');
 const bcrypt = require('bcryptjs');
 const { check, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+require('https').globalAgent.options.ca = require('ssl-root-cas/latest').create();
 
 const app = express();
 
@@ -2352,7 +2353,7 @@ app.post("/uploadCoupon", [
 
 // index Page
 
-app.get("/getCovidTests", async(req,res)=>{
+app.get("/getCovidTests", async (req,res) => {
   try{
     const response = await client.query(`SELECT * FROM "apttests"  WHERE "isSpecial" = TRUE AND TYPE='covid'`);
     const data = response.rows;
