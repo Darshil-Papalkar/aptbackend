@@ -11,7 +11,7 @@ const sgMail = require('@sendgrid/mail');
 const bcrypt = require('bcryptjs');
 const { check, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
-require('https').globalAgent.options.ca = require('ssl-root-cas/latest').create();
+require('https').globalAgent.options.ca = require('ssl-root-cas').create();
 
 const app = express();
 
@@ -572,7 +572,7 @@ const billID = async (data, id) => {
   // console.log(data, id);
   try{
     // console.log(id);
-    const here = 'https://aptdiagnostics.com/';
+    const here = 'http://aptdiagnostics.com/';
     const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
 
 APT Diagnostics`;
