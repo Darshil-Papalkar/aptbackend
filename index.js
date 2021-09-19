@@ -11,7 +11,7 @@ const sgMail = require('@sendgrid/mail');
 const bcrypt = require('bcryptjs');
 const { check, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
-require('https').globalAgent.options.ca = require('ssl-root-cas').create();
+// require('https').globalAgent.options.ca = require('ssl-root-cas').create();
 
 const app = express();
 
@@ -1588,7 +1588,6 @@ app.post("/admin/postPackage",
           [
             check("packageCategory").not().isEmpty(),
             check("blogType").not().isEmpty(),
-            check("packageDescription").not().isEmpty(),
             check("testsIncluded").not().isEmpty(),
             check("discountedPrice").not().isEmpty(),
             check("idealFor").not().isEmpty(),
@@ -1757,8 +1756,6 @@ app.post("/admin/postTest",
           upload.single("testImage"), [
             check("testCategory").not().isEmpty(),
             check("blogType").not().isEmpty(),
-            check("details").not().isEmpty(),
-            check("discountedAmount").not().isEmpty(),
             check("relatedOrgan").not().isEmpty(),
             check("isSpecial").isBoolean()
           ], 
@@ -1783,8 +1780,8 @@ app.post("/admin/postTest",
     if (check.rows.length < 1) {
       result = await client.query(
         `INSERT INTO "apttests" ("testID", "testName", "description", "details", "imageLink", "sampleReportImage", 
-          "testAmount", "isSpecial", "type", "testCode", "testCategory", "organRelated", "discountedAmount") VALUES 
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          "testAmount", "isSpecial", "type", "testCode", "testCategory", "organRelated") VALUES 
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           req.body.testID,
           req.body.testName,
@@ -1797,8 +1794,7 @@ app.post("/admin/postTest",
           req.body.blogType,
           req.body.testCode,
           req.body.testCategory,
-          req.body.relatedOrgan,
-          req.body.discountedAmount
+          req.body.relatedOrgan
         ]
       );
     } 
@@ -1806,7 +1802,7 @@ app.post("/admin/postTest",
       result = await client.query(
         `UPDATE "apttests" SET "organRelated" = $1, "testName" = $2, "description" = $3, "details" = $4, "imageLink" = $5, 
         "sampleReportImage" = $6, "testAmount" = $7, "isSpecial" = $8, "type" = $9, "testCode" = $10, "testCategory" = $11,
-         "discountedAmount" = $12 WHERE "testID" = $13`,
+        WHERE "testID" = $12`,
         [
           req.body.relatedOrgan,
           req.body.testName,
@@ -1819,7 +1815,6 @@ app.post("/admin/postTest",
           req.body.blogType,
           req.body.testCode,
           req.body.testCategory,
-          req.body.discountedAmount,
           req.body.testID
         ]
       );

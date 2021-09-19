@@ -14,6 +14,10 @@ secretAccessKey
 })
  
 function uploadFile(file){
+    if(!file || file.length === 0){
+        // console.log('empty file', file);
+        return {Location: ''};
+    }
     const type = file.mimetype.split('/')[1];
     // console.log("MimeType --", type);
 
