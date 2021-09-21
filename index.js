@@ -113,7 +113,7 @@ app.post("/makePaymentRazorpay", async (req, res) => {
   try{  
     // console.log(req.body);
     const currency = "INR";
-    const amount = req.body.amount * 100;
+    const amount = Math.round(req.body.amount) * 100;
     const response = await razorpay.orders.create({amount, currency});
     // console.log(response.data);
     res.send(response).status(200);
@@ -1391,7 +1391,7 @@ app.post('/admin/validate', [
           const token = jwt.sign(
             {email},
             process.env.JSON_TOKEN_KEY,
-            {expiresIn: '1h'}
+            {expiresIn: '7d'}
           );
           return res.status(200).json({
                                 code: 200, 
@@ -1610,8 +1610,20 @@ app.post("/admin/postPackage",
 
     let storeImage = "", result;
     // console.log(req.file);
-    const uploadResult = await uploadFile(req.file);
-    storeImage = uploadResult.Location;
+
+    if(req.body.image === 'null' || !req.body.image){
+      storeImage = check.rows[0].image;
+    }
+    else{
+      const uploadResult = await uploadFile(req.file);
+      storeImage = uploadResult.Location;
+    }
+
+    // console.log(check.rows);
+    // console.log("--------------------------------------");
+    // console.log(req.body);
+
+    // return res.json({code: 200, data: check.rows});
 
     if (check.rows.length < 1) {
       result = await client.query(
@@ -1768,14 +1780,29 @@ app.post("/admin/postTest",
       return res.status(400).json({code: 400, message: errors});
     }
 
+    // console.log(req.body);
+
     const check = await client.query(
         `SELECT * FROM "apttests" WHERE "testID" = $1`, [req.body.testID]
     );
 
+    // console.log(check.rows);
+
     let testImage = "", result, testReport = "";
-    
-    const uploadResult = await uploadFile(req.file);
-    testImage = uploadResult.Location;
+
+    if(req.body.testImage === 'null' || !req.body.testImage){
+      testImage = check.rows[0].imageLink;
+    }
+    else{
+      const uploadResult = await uploadFile(req.file);
+      testImage = uploadResult.Location;
+    }
+
+    // console.log(check.rows);
+    // console.log("--------------------------------------");
+    // console.log(req.body);
+
+    // return res.json({code: 200, data: check.rows});
     
     if (check.rows.length < 1) {
       result = await client.query(
@@ -1799,9 +1826,10 @@ app.post("/admin/postTest",
       );
     } 
     else {
+      // console.log(testImage, testReport);
       result = await client.query(
         `UPDATE "apttests" SET "organRelated" = $1, "testName" = $2, "description" = $3, "details" = $4, "imageLink" = $5, 
-        "sampleReportImage" = $6, "testAmount" = $7, "isSpecial" = $8, "type" = $9, "testCode" = $10, "testCategory" = $11,
+        "sampleReportImage" = $6, "testAmount" = $7, "isSpecial" = $8, "type" = $9, "testCode" = $10, "testCategory" = $11
         WHERE "testID" = $12`,
         [
           req.body.relatedOrgan,
@@ -2333,17 +2361,45 @@ app.post("/uploadCoupon", [
       return res.json(errors).status(400);
     }
     const result = await client.query(`INSERT INTO "aptcoupons" VALUES ($1, $2)`, [req.body.couponCode, req.body.couponPrice]);
-    if(result.rowCountra > 0){
+    if(result.rowCount > 0){
       res.json({code: 200, message: "Coupon Added Successfully"}).status(200);
     }
     else{
-      res.json({code: 500, message: "Couldn't add coupon"}).status(500);
+      res.json({code: 500, message: "Couldn't add coupon"});
     }
   }
   catch(err){
     console.log(err);
     res.json({code: 500, message: "Server Issue, try again!"}).status(500);
   }
+});
+
+// delete coupon
+app.delete("/admin/deleteCoupon", [
+    check("couponCode").not().isEmpty()
+  ], 
+  async (req, res) => {
+    try{
+      const errors = validationResult(req);
+      if(!errors.isEmpty()){
+        console.log(errors);
+        return res.json({message: errors}).status(400);
+      }
+      
+      const result = await client.query(`DELETE FROM "aptcoupons" WHERE "couponCode" = $1 RETURNING *`, 
+        [req.query.couponCode]);
+
+        if(result.rowCount > 0){
+        res.json({code: 200, message: "Code deleted successfully"}).status(200);
+      }
+      else{
+        res.json({code: 500, message: "Couldn't find a coupon for given code"});
+      }
+    }
+    catch(err){
+      console.log(err);
+      res.json({code: 500, message: "Server issue, try again later!"}).status(500);
+    }
 });
 
 // index Page
@@ -2398,8 +2454,9 @@ app.post("/testAPI",async(req,res)=>{
 
 app.get("/slotBooking", async(req, res) => {
   try{
-    const result = await client.query(`SELECT * FROM "aptbookings" WHERE "slot" = $1`, [req.query.slot]);
-
+    // console.log("Query", req.query);
+    const result = await client.query(`SELECT * FROM "aptbookings" WHERE "slotDate" = $1`, [req.query.slot]);
+    // console.log("Result", result.rows);
     const decryptSlot = { 7:"slot1", 8:"slot2", 9:"slot3", 10:"slot4", 11:"slot5", 12:"slot6",
                           13:"slot7", 14:"slot8", 15:"slot9", 16:"slot10", 17:"slot11", 
                           18:"slot12", 19:"slot13", 20:"slot14", 21:"slot15"};
@@ -2407,12 +2464,14 @@ app.get("/slotBooking", async(req, res) => {
     const slots = { slot1:0, slot2:0, slot3:0, slot4:0, slot5:0, slot6:0, slot7:0, slot8:0, 
                     slot9:0, slot10:0, slot11:0, slot12:0, slot13:0, slot14:0, slot15:0};
 
-    for (let a of result.rows){
-      let date = new Date(a.slot).getUTCHours();
-      // console.log(date);
-      if(date < 7 && date > 21){}
-      else{
-        slots[decryptSlot[date]]++
+    if(req.query.bookingType.toString() === 'home'){
+      for (let a of result.rows){
+        let date = new Date(a.slotDate + "T" + a.slotTime).getUTCHours();
+        // console.log(date);
+        if(date < 7 && date > 21){}
+        else{
+          slots[decryptSlot[date]]++
+        }
       }
     }
     // console.log(slots);
@@ -2446,8 +2505,10 @@ app.post("/slotBooking",async(req,res) => {
 
 const setSlot = async (data) => {
   // console.log(data);
+  const date = new Date(data.slotDate);
+  // console.log(date);
   try{
-    await client.query(`INSERT INTO "aptbookings" VALUES ($1, $2)`,[data.mobile, data.slotTime]);
+    await client.query(`INSERT INTO "aptbookings" VALUES ($1, $2, $3, $4, $5)`,[data.mobile, data.bookingType, data.slotDate.split("T")[0], data.slotDate.split("T")[1], data.fullName]);
     // console.log(result);
     return true;
 
@@ -2710,6 +2771,4 @@ app.post("/requestCallback", async (req, res) => {
 app.listen(process.env.PORT || 5000,()=>{
     console.log(process.env.PORT || 5000);
 });
-
-
 
