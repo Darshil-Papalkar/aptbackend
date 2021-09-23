@@ -14,7 +14,7 @@ secretAccessKey
 })
  
 function uploadFile(file){
-    if(!file || file.length === 0){
+    if(!file || !file.filename ){
         // console.log('empty file', file);
         return {Location: ''};
     }

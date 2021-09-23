@@ -572,7 +572,7 @@ const billID = async (data, id) => {
   // console.log(data, id);
   try{
     // console.log(id);
-    const here = 'http://aptdiagnostics.com/';
+    const here = 'www.aptdiagnostics.com/';
     const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
 
 APT Diagnostics`;
@@ -1342,7 +1342,19 @@ app.get("/getAllReport", async (req, res) => {
     console.log(err);
     res.status(500).json(err);
   }
-})
+});
+
+app.get("/getAllPackage", async (req, res) => {
+  try {
+    // console.log("Getting All packages");
+    const result = await client.query(
+      `SELECT * FROM "aptpackages" ORDER BY "packageID"`
+    );
+    res.status(200).json(result.rows);
+  } catch (e) {
+    res.send("Internal Server Error").status(500);
+  }
+});
 
 //newly created for blog section
 app.get("/getAllBlogs", async (req, res) => {
@@ -1391,7 +1403,7 @@ app.post('/admin/validate', [
           const token = jwt.sign(
             {email},
             process.env.JSON_TOKEN_KEY,
-            {expiresIn: '7d'}
+            {expiresIn: '1d'}
           );
           return res.status(200).json({
                                 code: 200, 
@@ -1602,7 +1614,7 @@ app.post("/admin/postPackage",
       console.log(errors);
       return res.status(400).json({code: 400, message: errors});
     }
-    // console.log(req);
+    // console.log(req.body);
     const check = await client.query(
       `SELECT * FROM "aptpackages" WHERE "packageID" = $1`, [req.body.packageID]
     );
@@ -1611,10 +1623,12 @@ app.post("/admin/postPackage",
     let storeImage = "", result;
     // console.log(req.file);
 
-    if(req.body.image === 'null' || !req.body.image){
+    if((req.file === undefined || !req.file.filename) && check.rowCount > 0){
+      // console.log("Existing image");
       storeImage = check.rows[0].image;
     }
     else{
+      // console.log("New image");
       const uploadResult = await uploadFile(req.file);
       storeImage = uploadResult.Location;
     }
@@ -1622,7 +1636,7 @@ app.post("/admin/postPackage",
     // console.log(check.rows);
     // console.log("--------------------------------------");
     // console.log(req.body);
-
+    // console.log("Image Path: ", storeImage);
     // return res.json({code: 200, data: check.rows});
 
     if (check.rows.length < 1) {
@@ -1790,7 +1804,7 @@ app.post("/admin/postTest",
 
     let testImage = "", result, testReport = "";
 
-    if(req.body.testImage === 'null' || !req.body.testImage){
+    if((req.file === undefined || !req.file.filename) && check.rowCount > 0){
       testImage = check.rows[0].imageLink;
     }
     else{
@@ -1871,7 +1885,7 @@ app.get("/admin/checkAndGetBlogById", async (req, res) => {
     try{
         const result = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`, [req.query.Id]);
         if(result.rows.length == 1){
-            console.log(result.rows[0]);
+            // console.log(result.rows[0]);
             res.send(result.rows).status(200);
         }
         else{
@@ -1916,7 +1930,8 @@ app.post("/admin/postBlog", blogUpload, [
         }
 
         const checkExist = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`, [req.body.blogId])
-        console.log(checkExist.rows)
+        console.log(checkExist.rows);
+
         if(checkExist.rows.length === 0){
           return res.status(404).json({code: 404, message: "No Entry Found with this Blog ID"});
         }
@@ -2385,7 +2400,7 @@ app.delete("/admin/deleteCoupon", [
         console.log(errors);
         return res.json({message: errors}).status(400);
       }
-      
+
       const result = await client.query(`DELETE FROM "aptcoupons" WHERE "couponCode" = $1 RETURNING *`, 
         [req.query.couponCode]);
 
@@ -2646,9 +2661,10 @@ app.post("/postPrescription",
               const date = new Date();
               const subject =  `New User Prescription_${data.name}`;
               const message = `${data.name} has uploaded a prescription. \nClick on the link below -
-               \n\n ${attachment}`;
+               \n\n ${attachment} \n\n
+               Contact Number - ${data.mobile}`;
               const htmlText = '<strong>' + data.name + '</strong> has uploaded a prescription. <br />Click on the link below - <br/><br/>' + 
-              attachment + "<br/><br/>Date - " + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
+              attachment + "<br/><br/>Contact Number - " + data.mobile + "<br/><br/>Date - " + date.getDate() + "/" + (date.getMonth()+1) + "/" + date.getFullYear() + " <br/>Time - " + date.getHours() + ":" + date.getMinutes() + ":" + date.getSeconds();
               // const to = 'anchitkumar100@gmail.com';
               const to = 'team@aptdiagnostics.com';
               await sendMail(subject, to, message, htmlText);
