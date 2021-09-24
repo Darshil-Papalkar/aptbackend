@@ -1910,7 +1910,6 @@ const blogUpload = upload.fields([
 app.post("/admin/postBlog", blogUpload, [
             check("author").not().isEmpty(),
             check("blogHeading").not().isEmpty(),
-            check("blogSubHeading").not().isEmpty(),
             check("blogType").not().isEmpty(),
             check("blogId").not().isEmpty()
           ],
@@ -2019,7 +2018,6 @@ app.post("/admin/insertBlog",
         insertBlogUpload, [
           check("author").not().isEmpty(),
           check("blogHeading").not().isEmpty(),
-          check("blogSubHeading").not().isEmpty(),
           check("content").not().isEmpty(),
           check("blogType").not().isEmpty()
         ], async (req, res) => {
@@ -2037,12 +2035,14 @@ app.post("/admin/insertBlog",
         // console.log(req.body);
         // console.log(req.files);
 
-        if(req.files.authorImage === undefined || req.files.blogImage === undefined || (req.body.isVideoBlog === 'true' && req.files.videoFile === undefined)){
+        if(req.files.blogImage === undefined || (req.body.isVideoBlog === 'true' && req.files.videoFile === undefined)){
           return res.status(404).json({code: 404, message: "Media Files Missing"});
         }
         
-        let result = await uploadFile(req.files.authorImage[0]);
-        authorImage = result.Location;
+        if(req.files.authorImage !== undefined){
+          let result = await uploadFile(req.files.authorImage[0]);
+          authorImage = result.Location;
+        }
 
         // console.log("AuthorImage - ", authorImage);
 
@@ -2444,15 +2444,15 @@ app.get("/getPackages", async(req, res) => {
   }
 })
 
-app.get("/getAllFeaturedTests",async(req,res)=>{
+app.get("/getAllFeaturedTests",async (req,res) => {
   try{
-    const response = await client.query(`SELECT * FROM "apttests"  WHERE "isSpecial" = 'true'`)
-    const data = response.rows
-    res.send({code:200,data}).status(200)
+    const response = await client.query(`SELECT * FROM "apttests"`);
+    const data = response.rows;
+    res.send({code:200,data}).status(200);
   }
   catch(e){
-    console.log(e)
-    res.send().status(500)
+    console.log(e);
+    res.status(500).json({error: e});
   }
 })
 
