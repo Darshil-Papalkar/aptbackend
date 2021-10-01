@@ -109,6 +109,294 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEYSECRET
 });
 
+// payment details update
+
+const savePaymentDetails = async (response, supportingData) => {
+  // console.log(response);
+  try{
+    await client.query(`INSERT INTO "aptUserPaymentDetails"
+                        ("userName", "contact", "payment_id", "order_id")
+                        VALUES ($1, $2, $3, $4)`, [
+                          supportingData.fullName, supportingData.mobile,
+                          response.razorpay_payment_id, 
+                          response.razorpay_order_id
+                        ]);
+  }
+  catch(err){
+    console.log(err);
+  }
+};
+
+
+// sms welcome user
+
+const welcomeNewUser = async (data) => {
+  console.log("generating welcome user sms");
+  try{
+    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life.
+Do not forget to wear mask and maintain social distancing.
+- APT Diagnostics`;
+  
+  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_WELCOME_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
+  .then(response => {/*console.log(response.data);*/ return true;})
+  .catch(err => {console.log("An Error Occured - " + err); return false;});
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+};
+
+// sms home collection new user
+
+const homeCollectionNewUser = async (data) => {
+  console.log("generating Home collection new user sms");
+  try{
+    const us = 'us';
+    const temp = (data.slotDate.split('T'));
+    const date = (temp[0]).toString();
+    const time1 = (temp[1]).toString().slice(0, 5);
+    const time2 = (parseInt(temp[1].slice(0, 2))+1).toString() + temp[1].slice(2, 5);
+    // console.log(time[2]);
+    // console.log(time);
+
+    const message = `You have been registered with ${us} and your home collection request has been booked and confirmed on ${date} between ${time1} to ${time2}.
+  - APT Diagnostics`
+  
+    await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_HOME_COLLECTION_NEWUSER_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
+    .then(response => {/*console.log(response.data);*/ return true;})
+    .catch(err => {console.log("An Error Occured - " + err); return false;});
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+
+};
+
+// sms home collection existing user
+
+const homeCollectionExistingUser = async (data) => {
+  console.log("generating Home collection existing user sms");
+  try{
+    const us = 'us';
+    const temp = (data.slotDate.split('T'));
+    const date = (temp[0]).toString();
+    const time1 = (temp[1]).toString().slice(0, 5);
+    const time2 = (parseInt(temp[1].slice(0, 2))+1).toString() + temp[1].slice(2, 5);
+    // console.log(time1);
+    // console.log(time2);
+
+    const message = `Hi ${data.fullName},
+
+Your home collection request with ${us} has been booked and confirmed on ${date} between ${time1} to ${time2}.
+    
+- APT Diagnostics`
+  
+    await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_HOME_COLLECTION_EXISTINGUSER_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
+    .then(response => {/*console.log(response.data);*/ return true;})
+    .catch(err => {console.log("An Error Occured - " + err); return false;});
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+
+}
+
+// sms user booking successful
+
+const successfulUserBooking = async (data) => {
+  console.log("generating successful user booking sms");
+  try{
+    const user = 'us';
+    const date = (data.slotDate.split('T')[0]).toString();
+
+    const message = `Hi ${data.fullName},
+Your appointment has been booked successfully with ${user} on ${date} at ${(data.slotTime).split(' ')[1]}.
+
+- APT Diagnostics`;
+
+  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_APPOINTMENT_BOOKED_TEMPLATE}&message=${message}&response=Y&messagetype=TXT`)
+  .then(response => {/*console.log(response.data);*/ return true;})
+  .catch(err => {console.log("An Error Occured - " + err); return false;});
+
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+};
+
+// sms new bill id
+
+const billID = async (data, id) => {
+  console.log("generating bill sms");
+  // console.log(data, id);
+  try{
+    // console.log(id);
+    const here = 'www.aptdiagnostics.com/';
+    const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
+
+APT Diagnostics`;
+
+  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_BILL_ID_TEMPLATE}&message=${message}&response=Y&messagetype=TXT`)
+  .then(response => {/*console.log(response.data);*/ return true;})
+  .catch(err => {console.log("An Error Occured - " + err); return false;});
+
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+};
+
+//booking utilities
+
+const checkUserExist = async (data) => {
+  const response = await client.query(`SELECT * FROM "apttestuser" WHERE 
+  "contact" = $1 ;`, [data.mobile]);
+  return response.rows[0];
+}
+
+const createNewUser = async (data) => {
+  // console.log("New User Data - ", data);
+  const passdate = new Date(data.dob).getFullYear();
+  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
+  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
+  const response = await client.query(`INSERT INTO "apttestuser" 
+                                          ("userName", "dob", "email", "gender", "appointmentList", "billList", "contact", 
+                                          "address", "userPassword", "reportList", "couponsUsed", "age", "prefix", "familyId") 
+                                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,[
+    data.fullName, data.dob, data.email, data.gender, data.appointmentList, data.billList,
+    data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix, data.familyId
+  ]);
+  if(data.email.trim().length > 0){
+    const subject = 'Welcome to APT Diagnostics';
+    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
+Do not forget to wear mask and maintain social distancing.
+\n- APT Diagnostics`;
+    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br/>Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
+'Do not forget to wear mask and maintain social distancing. ' + 
+'<br /><br />- APT Diagnostics';
+    sendMail(subject, data.email, message, htmlText);
+  }
+  await welcomeNewUser(data);
+  return response.rowCount === 1;
+}
+
+const updateExistingUser = async (data) => {
+  // console.log("Existing User Data - ", data);
+  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
+                                      "couponsUsed" = $4, "age" = $5, "gender" = $6, "email" = $7, "address" = $8, "prefix" = $9
+                                      WHERE "contact" = $10`,[
+    data.appointmentList, data.billList, data.reportList, data.couponsUsed,
+    data.age, data.gender, data.email, data.address, data.prefix, data.mobile
+  ]);
+  return response.rowCount === 1;
+}
+
+
+const createNewUser2 = async (data) => {
+  const passdate = new Date(data.dob).getFullYear();
+  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
+  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
+  const response = await client.query(`INSERT INTO "apttestuser" (
+    "userName", "userPassword", "dob", "email", "gender", "address", "appointmentList",
+    "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning 
+    "userId", "userName", "dob", "email", "gender", "address", 
+    "appointmentList", "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix";`,[
+      data.fullName,
+      password,
+      data.dob,
+      data.email,
+      data.gender,
+      data.area,
+      [], [], [],
+      data.mobile,
+      null,
+      [],
+      data.age,
+      data.prefix
+    ]
+  );
+  if(data.email.trim().length > 0){
+    const subject = 'Welcome to APT Diagnostics';
+    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
+Do not forget to wear mask and maintain social distancing.
+\n- APT Diagnostics`;
+    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br />Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
+'Do not forget to wear mask and maintain social distancing. ' + 
+'<br /><br />- APT Diagnostics';
+    sendMail(subject, data.email, message, htmlText);
+  }
+  await welcomeNewUser(data);
+  return response.rows[0];
+};
+
+const updateExistingUser2 = async (data) => {
+  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
+                                      "couponsUsed" = $4 WHERE "contact" = $5`,[
+    data.appointmentList,
+    data.billList,
+    data.reportList,
+    data.couponsUsed,
+    data.mobile
+  ]);
+
+  return response.rows[0];
+}
+
+const findUserByFamilyId = async (data)=>{
+  const result = await client.query(`SELECT * FROM "apttestuser" WHERE "familyId" = $1`,[data.familyId])
+  return result.rows[0]
+}
+
+const isFamilyMemberExist = async (data) => {
+  const result = await client.query(`SELECT * FROM "memberslist" WHERE "familyId" = $1 AND "userName" = $2`,[
+    data.familyId,
+    data.fullName
+  ]);
+  return result.rowCount > 0;
+
+}
+
+const createFamilyMember = async (data) => {
+  // console.log("Create Family Member - " , data);
+  const result = await client.query(`INSERT INTO "memberslist" 
+                              ("userName" , "dob" , "address" , "gender" , "familyId", "email", "mobile", "prefix", "age") 
+                              VALUES ($1 ,$2 ,$3 ,$4, $5, $6, $7, $8, $9)`,[
+    data.fullName.trim(),
+    data.dob,
+    data.area,
+    data.gender,
+    data.familyId,
+    data.email,
+    data.mobile,
+    data.prefix,
+    data.age
+  ]);
+  return result.rowCount === 1;
+};
+
+const updateFamilyMember = async (data) => {
+
+  // console.log("Update Family Member - " , data);
+  const result = await client.query(`UPDATE "memberslist" SET "address" = $1, "gender" = $2, "email" = $3, "dob" = $4,
+                                    "prefix" = $5, "age" = $6 WHERE "mobile" = $7 AND "familyId" = $8`,[
+    data.area,
+    data.gender,
+    data.email,
+    data.dob,
+    data.prefix,
+    data.age,
+    data.mobile,
+    data.familyId
+  ]);
+  return result.rowCount == 1;
+}
+
 app.post("/makePaymentRazorpay", async (req, res) => {
   try{  
     // console.log(req.body);
@@ -125,33 +413,67 @@ app.post("/makePaymentRazorpay", async (req, res) => {
   }
 });
 
-app.post("/confirmGiftPayment",async(req,res)=>{
+app.post("/confirmGiftPayment", async(req, res) => {
   try{
-    const result = await client.query(`INSERT INTO "aptgifts" VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[
-      req.body.userName,
-      req.body.userEmail,
-      req.body.userContact,
-      req.body.recieverName,
-      req.body.recieverContact,
-      req.body.recieverEmail,
-      req.body.couponCode,
-      req.body.couponAmount,
-      req.body.giftedTestList
-    ]);
+    // console.log(req.body.supportingData.giftCartData);
+    await savePaymentDetails(req.body.response, req.body.supportingData);
+    const data = req.body.supportingData;
+    const coupon = data.fullName.toLowerCase().substring(0, 4) + (Math.floor(Math.random() * 1000) + 1000);
+    let result = await client.query(`INSERT INTO "aptgifts" 
+                                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, [
+                                          data.fullName, data.email, data.mobile, 
+                                          data.doneeName, data.doneeContact, data.doneeEmail,
+                                          coupon, data.discountPercent, true, data.familyId, data.doneePrefix, 
+                                          data.doneeGender, data.giftCartData
+                                        ]);
+    if(result.rowCount === 0){
+      return res.json({code: 405, message: "Couldn't book the gift, please try again"});
+    }
 
-    res.json({
-      code:200,
-      data:"",
-    })
+    const userData = await checkUserExist(req.body.supportingData);
+    if(userData !== undefined){
+      const couponsUsed = userData.couponsUsed.length ? userData.couponsUsed: [];
+      couponsUsed.push(req.body.supportingData.coupon);
+
+      const update = await client.query('UPDATE "apttestuser" SET "couponsUsed" = $1 WHERE "contact" = $2', [
+        couponsUsed, req.body.supportingData.mobile
+      ]);
+      // console.log(update.rowCount);
+    }
+
+    const customData = {
+      fullName: data.doneeName,
+      dob: '',
+      area: '',
+      gender: data.doneeGender,
+      familyId: data.familyId,
+      email: data.doneeEmail,
+      mobile: data.doneeContact,
+      prefix: data.doneePrefix,
+      age: ''
+    };
+
+    result = createFamilyMember(customData);
+
+    if(!result){
+      return res.json({code: 405, message: "Couldn't book the gift, please try again"});
+    }
+
+    // sms to donor with template
+
+    // sms to donee with template
+
+    // email to donor with template
+
+    // email to donee with template
+
+    res.json({code: 200, coupon, message: `Tests gifted successfully to ${data.doneeName}, your One time Coupon is : ${coupon}`})
 
   }catch(err){
-    console.log(err)
-    res.json({
-      code:500,
-      data:"",
-    })
+    console.log(err);
+    res.json({code:500, coupon: '', message: err.message});
   }
-})
+});
 
 app.post("/addSubscriber", [
       check("email").isEmail(),
@@ -465,275 +787,6 @@ app.post("/bookLabAppointment", async (req, res) => {
   }
 });
 
-// sms welcome user
-
-const welcomeNewUser = async (data) => {
-  console.log("generating welcome user sms");
-  try{
-    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life.
-Do not forget to wear mask and maintain social distancing.
-- APT Diagnostics`;
-  
-  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_WELCOME_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
-  .then(response => {/*console.log(response.data);*/ return true;})
-  .catch(err => {console.log("An Error Occured - " + err); return false;});
-  }
-  catch(err){
-    console.log(err);
-    return false;
-  }
-};
-
-// sms home collection new user
-
-const homeCollectionNewUser = async (data) => {
-  console.log("generating Home collection new user sms");
-  try{
-    const us = 'us';
-    const temp = (data.slotDate.split('T'));
-    const date = (temp[0]).toString();
-    const time1 = (temp[1]).toString().slice(0, 5);
-    const time2 = (parseInt(temp[1].slice(0, 2))+1).toString() + temp[1].slice(2, 5);
-    // console.log(time[2]);
-    // console.log(time);
-
-    const message = `You have been registered with ${us} and your home collection request has been booked and confirmed on ${date} between ${time1} to ${time2}.
-  - APT Diagnostics`
-  
-    await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_HOME_COLLECTION_NEWUSER_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
-    .then(response => {/*console.log(response.data);*/ return true;})
-    .catch(err => {console.log("An Error Occured - " + err); return false;});
-  }
-  catch(err){
-    console.log(err);
-    return false;
-  }
-
-};
-
-// sms home collection existing user
-
-const homeCollectionExistingUser = async (data) => {
-  console.log("generating Home collection existing user sms");
-  try{
-    const us = 'us';
-    const temp = (data.slotDate.split('T'));
-    const date = (temp[0]).toString();
-    const time1 = (temp[1]).toString().slice(0, 5);
-    const time2 = (parseInt(temp[1].slice(0, 2))+1).toString() + temp[1].slice(2, 5);
-    // console.log(time1);
-    // console.log(time2);
-
-    const message = `Hi ${data.fullName},
-
-Your home collection request with ${us} has been booked and confirmed on ${date} between ${time1} to ${time2}.
-    
-- APT Diagnostics`
-  
-    await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_HOME_COLLECTION_EXISTINGUSER_TEMPLATE_ID}&message=${message}&response=Y&messagetype=TXT`)
-    .then(response => {/*console.log(response.data);*/ return true;})
-    .catch(err => {console.log("An Error Occured - " + err); return false;});
-  }
-  catch(err){
-    console.log(err);
-    return false;
-  }
-
-}
-
-// sms user booking successful
-
-const successfulUserBooking = async (data) => {
-  console.log("generating successful user booking sms");
-  try{
-    const user = 'us';
-    const date = (data.slotDate.split('T')[0]).toString();
-
-    const message = `Hi ${data.fullName},
-Your appointment has been booked successfully with ${user} on ${date} at ${(data.slotTime).split(' ')[1]}.
-
-- APT Diagnostics`;
-
-  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_APPOINTMENT_BOOKED_TEMPLATE}&message=${message}&response=Y&messagetype=TXT`)
-  .then(response => {/*console.log(response.data);*/ return true;})
-  .catch(err => {console.log("An Error Occured - " + err); return false;});
-
-  }
-  catch(err){
-    console.log(err);
-    return false;
-  }
-};
-
-// sms new bill id
-
-const billID = async (data, id) => {
-  console.log("generating bill sms");
-  // console.log(data, id);
-  try{
-    // console.log(id);
-    const here = 'www.aptdiagnostics.com/';
-    const message = `Hi ${data.fullName}, Your Bill ID is ${parseInt(id)}. Please use this Bill ID to download the reports with a single click from ${here}.
-
-APT Diagnostics`;
-
-  await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.mobile}&tempid=${process.env.SMS_CLIENT_BILL_ID_TEMPLATE}&message=${message}&response=Y&messagetype=TXT`)
-  .then(response => {/*console.log(response.data);*/ return true;})
-  .catch(err => {console.log("An Error Occured - " + err); return false;});
-
-  }
-  catch(err){
-    console.log(err);
-    return false;
-  }
-}
-
-//booking utilities
-
-const checkUserExist = async (data) => {
-  const response = await client.query(`SELECT * FROM "apttestuser" WHERE 
-  "contact" = $1 ;`, [data.mobile]);
-  return response.rows[0];
-}
-
-const createNewUser = async (data) => {
-  // console.log("New User Data - ", data);
-  const passdate = new Date(data.dob).getFullYear();
-  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
-  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
-  const response = await client.query(`INSERT INTO "apttestuser" 
-                                          ("userName", "dob", "email", "gender", "appointmentList", "billList", "contact", 
-                                          "address", "userPassword", "reportList", "couponsUsed", "age", "prefix", "familyId") 
-                                          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,[
-    data.fullName, data.dob, data.email, data.gender, data.appointmentList, data.billList,
-    data.mobile, data.area, password, data.reportList, data.couponsUsed, data.age, data.prefix, data.familyId
-  ]);
-  if(data.email.trim().length > 0){
-    const subject = 'Welcome to APT Diagnostics';
-    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
-Do not forget to wear mask and maintain social distancing.
-\n- APT Diagnostics`;
-    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br/>Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
-'Do not forget to wear mask and maintain social distancing. ' + 
-'<br /><br />- APT Diagnostics';
-    sendMail(subject, data.email, message, htmlText);
-  }
-  await welcomeNewUser(data);
-  return response.rowCount === 1;
-}
-
-const updateExistingUser = async (data) => {
-  // console.log("Existing User Data - ", data);
-  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
-                                      "couponsUsed" = $4, "age" = $5, "gender" = $6, "email" = $7, "address" = $8, "prefix" = $9
-                                      WHERE "contact" = $10`,[
-    data.appointmentList, data.billList, data.reportList, data.couponsUsed,
-    data.age, data.gender, data.email, data.address, data.prefix, data.mobile
-  ]);
-  return response.rowCount === 1;
-}
-
-
-const createNewUser2 = async (data) => {
-  const passdate = new Date(data.dob).getFullYear();
-  let password = /^\S*/i.exec(data.fullName)[0].toLowerCase() + passdate;
-  password = await bcrypt.hash(password.toString(), parseInt(process.env.PASS_CLIENT_HASH_SALT));
-  const response = await client.query(`INSERT INTO "apttestuser" (
-    "userName", "userPassword", "dob", "email", "gender", "address", "appointmentList",
-    "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning 
-    "userId", "userName", "dob", "email", "gender", "address", 
-    "appointmentList", "billList", "reportList", "contact", "familyId", "couponsUsed", "age", "prefix";`,[
-      data.fullName,
-      password,
-      data.dob,
-      data.email,
-      data.gender,
-      data.area,
-      [], [], [],
-      data.mobile,
-      null,
-      [],
-      data.age,
-      data.prefix
-    ]
-  );
-  if(data.email.trim().length > 0){
-    const subject = 'Welcome to APT Diagnostics';
-    const message = `Hi ${data.fullName}, Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. 
-Do not forget to wear mask and maintain social distancing.
-\n- APT Diagnostics`;
-    const htmlText = 'Hi<strong> ' + data.fullName + '</strong>, <br />Welcome to APT Diagnostics. We wish you and your near ones a very happy and healthy life. <br />' +
-'Do not forget to wear mask and maintain social distancing. ' + 
-'<br /><br />- APT Diagnostics';
-    sendMail(subject, data.email, message, htmlText);
-  }
-  await welcomeNewUser(data);
-  return response.rows[0];
-};
-
-const updateExistingUser2 = async (data) => {
-  const response = await client.query(`UPDATE "apttestuser" SET "appointmentList" = $1 ,"billList" = $2, "reportList" = $3, 
-                                      "couponsUsed" = $4 WHERE "contact" = $5`,[
-    data.appointmentList,
-    data.billList,
-    data.reportList,
-    data.couponsUsed,
-    data.mobile
-  ]);
-
-  return response.rows[0];
-}
-
-const findUserByFamilyId = async (data)=>{
-  const result = await client.query(`SELECT * FROM "apttestuser" WHERE "familyId" = $1`,[data.familyId])
-  return result.rows[0]
-}
-
-const isFamilyMemberExist = async (data) => {
-  const result = await client.query(`SELECT * FROM "memberslist" WHERE "familyId" = $1 AND "userName" = $2`,[
-    data.familyId,
-    data.fullName
-  ]);
-  return result.rowCount === 1;
-
-}
-
-const createFamilyMember = async (data) => {
-  // console.log("Create Family Member - " , data);
-  const result = await client.query(`INSERT INTO "memberslist" 
-                              ("userName" , "dob" , "address" , "gender" , "familyId", "email", "mobile", "prefix", "age") 
-                              VALUES ($1 ,$2 ,$3 ,$4, $5, $6, $7, $8, $9)`,[
-    data.fullName.trim(),
-    data.dob,
-    data.area,
-    data.gender,
-    data.familyId,
-    data.email,
-    data.mobile,
-    data.prefix,
-    data.age
-  ]);
-  return result.rowCount === 1;
-}
-
-const updateFamilyMember = async (data) => {
-
-  // console.log("Update Family Member - " , data);
-  const result = await client.query(`UPDATE "memberslist" SET "address" = $1, "gender" = $2, "email" = $3, "mobile" = $4,
-                                    "prefix" = $5, "age" = $6 WHERE "mobile" = $7 AND "familyId" = $8`,[
-    data.area,
-    data.gender,
-    data.email,
-    data.mobile,
-    data.prefix,
-    data.age,
-    data.mobile,
-    data.familyId
-  ]);
-  return result.rowCount == 1;
-}
-
 // -------------- sms -------------------
 
 // prescription otp verification
@@ -902,6 +955,9 @@ app.post("/updatePassword", [
 app.post("/bookAppointment/lab", async (req, res) => {
     try{
       // console.log(req.body.data);
+      if(req.body.response && req.body.response !== null){
+        await savePaymentDetails(req.body.response, req.body.supportingData);
+      }
 
       let newBillId = "";
       let newAppointmentId = "";
@@ -931,6 +987,16 @@ app.post("/bookAppointment/lab", async (req, res) => {
       }
 
       // console.log("Normal Member");
+      if(req.body.supportingData.isGift){
+        // console.log(req.body.supportingData);
+        const queryResult = await client.query(`UPDATE "aptgifts" SET "isValid" = $1 WHERE 
+                                                "recieverContact" = $2 AND "couponCode" = $3`, [
+                              false,
+                              req.body.supportingData.mobile,
+                              req.body.supportingData.giftCode
+                            ]);
+        // console.log(queryResult.rows);
+      }
 
       const userData = await checkUserExist(req.body.supportingData);
       // console.log(userData);
@@ -1026,6 +1092,10 @@ app.post("/bookAppointment/lab", async (req, res) => {
 app.post("/bookAppointment/home", async (req, res) => {
   try{
 
+    if(req.body.response && req.body.response !== null){
+      await savePaymentDetails(req.body.response, req.body.supportingData);
+    }
+
     let newBillId = "";
     let newAppointmentId = "" ;
     let newReportDetails = [];
@@ -1049,6 +1119,17 @@ app.post("/bookAppointment/home", async (req, res) => {
       else{
         await createFamilyMember(req.body.supportingData);
       }
+    }
+
+    if(req.body.supportingData.isGift){
+      // console.log(req.body.supportingData);
+      const queryResult = await client.query(`UPDATE "aptgifts" SET "isValid" = $1 WHERE 
+                                              "recieverContact" = $2 AND "couponCode" = $3`, [
+                            false,
+                            req.body.supportingData.mobile,
+                            req.body.supportingData.giftCode
+                          ]);
+      // console.log(queryResult.rows);
     }
     
     const userData = await checkUserExist(req.body.supportingData);
@@ -1112,7 +1193,8 @@ app.post("/bookAppointment/home", async (req, res) => {
         "reportList": newReportDetails,
         "couponsUsed": [req.body.supportingData.couponsUsed],
         "age": req.body.supportingData.age,
-        "prefix": req.body.supportingData.prefix
+        "prefix": req.body.supportingData.prefix,
+        "familyId": req.body.supportingData.familyId
       };
 
       if(await createNewUser(data2)){
@@ -1904,10 +1986,11 @@ app.get("/admin/checkAndGetBlogById", async (req, res) => {
 const blogUpload = upload.fields([
   {name :"videoFile", maxCount:1}, 
   {name :"authorImage", maxCount:1},
-  {name: "blogImage", maxCount: 1}
+  {name: "blogImage", maxCount: 4}
 ]);
 
-app.post("/admin/postBlog", blogUpload, [
+app.post("/admin/postBlog", 
+          blogUpload, [
             check("author").not().isEmpty(),
             check("blogHeading").not().isEmpty(),
             check("blogType").not().isEmpty(),
@@ -1920,7 +2003,7 @@ app.post("/admin/postBlog", blogUpload, [
           return res.status(400).json({code: 400, message: errors});
         }
         let authorImage = "";
-        let blogImage = "";
+        let blogImage = [];
         let videoFile = "";
         let content = req.body.content;
 
@@ -1929,7 +2012,7 @@ app.post("/admin/postBlog", blogUpload, [
         }
 
         const checkExist = await client.query(`SELECT * FROM "aptblogs" WHERE "blogId" = $1`, [req.body.blogId])
-        console.log(checkExist.rows);
+        // console.log(checkExist.rows);
 
         if(checkExist.rows.length === 0){
           return res.status(404).json({code: 404, message: "No Entry Found with this Blog ID"});
@@ -1948,8 +2031,10 @@ app.post("/admin/postBlog", blogUpload, [
         // -------------------------------------
 
         if(req.files.blogImage !== undefined){
-          result = await uploadFile(req.files.blogImage[0]);
-          blogImage = result.Location;
+          for (var file of req.files.blogImage){
+            const result = await uploadFile(file);
+            blogImage.push(result.Location);
+          }
         }
         else{
           blogImage = checkExist.rows[0].imageLinks;
@@ -2011,7 +2096,7 @@ app.post("quickLogin",async(req,res)=>{
 const insertBlogUpload = upload.fields([
     {name :"videoFile", maxCount:1}, 
     {name :"authorImage", maxCount:1},
-    {name: "blogImage", maxCount: 1}
+    {name: "blogImage", maxCount: 4}
 ]);
 
 app.post("/admin/insertBlog", 
@@ -2029,10 +2114,11 @@ app.post("/admin/insertBlog",
         }
 
         let authorImage = "";
-        let blogImage = "";
+        let blogImage = [];
         let videoFile = "";
 
-        // console.log(req.body);
+        // console.log(req.body.blogImage);
+        // console.log("@@@@@@@@@@@@@@@@@@@@@@#####################3");
         // console.log(req.files);
 
         if(req.files.blogImage === undefined || (req.body.isVideoBlog === 'true' && req.files.videoFile === undefined)){
@@ -2045,9 +2131,13 @@ app.post("/admin/insertBlog",
         }
 
         // console.log("AuthorImage - ", authorImage);
+        for (var file of req.files.blogImage){
+          const result = await uploadFile(file);
+          blogImage.push(result.Location);
+        }
 
-        result = await uploadFile(req.files.blogImage[0]);
-        blogImage = result.Location;
+        // result = await uploadFile(req.files.blogImage[0]);
+        // blogImage = result.Location;
 
         // console.log("Blog Image - ", blogImage);
 
@@ -2075,11 +2165,11 @@ app.post("/admin/insertBlog",
             new Date()
         ]);
 
-        res.send(insertResult.rows[0]).status(200)
+        res.send(insertResult.rows[0]).status(200);
     }
     catch(err){
-        console.log(err)
-        res.send("Internal Server Error").status(500)
+        console.log(err);
+        res.send("Internal Server Error").status(500);
     }
 });
 
@@ -2444,9 +2534,9 @@ app.get("/getPackages", async(req, res) => {
   }
 })
 
-app.get("/getAllFeaturedTests",async (req,res) => {
+app.get("/getAllFeaturedTests", async (req, res) => {
   try{
-    const response = await client.query(`SELECT * FROM "apttests"`);
+    const response = await client.query(`SELECT * FROM "apttests" WHERE "isSpecial" = true`);
     const data = response.rows;
     res.send({code:200,data}).status(200);
   }
@@ -2454,10 +2544,32 @@ app.get("/getAllFeaturedTests",async (req,res) => {
     console.log(e);
     res.status(500).json({error: e});
   }
-})
+});
 
-
-
+app.get("/verifyGiftCode", [
+      check("code").not().isEmpty()
+  ],  
+    async (req, res) => {
+  try{
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+      console.log(errors);
+      return res.json({code: 400, message: "Gift Code Missing/Invalid", data: {}});
+    }
+    const coupons = await client.query(`SELECT * FROM "aptgifts" WHERE "couponCode" = $1`, [req.query.code.toLowerCase()]);
+    
+    if(coupons.rowCount > 0 && coupons.rows[0].isValid){
+      res.json({code: 200, message: "Code Successfully Found!", data: coupons.rows[0]});
+    }
+    else{
+      res.json({code: 404, message: "Not a valid Gift Code", data: {}});
+    }
+  }
+  catch(err){
+    console.log(err);
+    res.json({code: 500, message: err.message, data: {}});
+  }
+});
 
 app.post("/testAPI",async(req,res)=>{
   await setSlot(req.body)

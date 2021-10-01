@@ -35,7 +35,7 @@ function uploadFile(file){
 }
 
 async function deleteFile(file){
-    console.log("File Name - ", file);
+    // console.log("File Name - ", file);
 
     const deleteParams = {
         Bucket: bucketName,
@@ -48,7 +48,7 @@ async function deleteFile(file){
             return err;
         }
         else {
-            console.log("Data S3 - ", data);
+            // console.log("Data S3 - ", data);
             return data;
         };
     });
