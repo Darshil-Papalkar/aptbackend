@@ -251,6 +251,28 @@ APT Diagnostics`;
   }
 };
 
+// sms gift booking details to Donee
+
+const doneeGift = async (data, coupon) => {
+  console.log("generating sms to Donee");
+
+  try{
+    const message = `Hi ${data.doneeName},
+    We wish you a healthy life and so does ${data.fullName}. ${data.fullName} has sent you apt package/tests. You can avail the voucher "${coupon}" using this link - "${www.aptdiagnostics.com/gifts/claim_gift}".
+    
+    Express your care. Gift a test to your near ones :)
+    APT Diagnostics`;
+    await axios(`http://www.smsjust.com/sms/user/urlsms.php?username=${process.env.SMS_CLIENT_USERNAME}&pass=${process.env.SMS_CLIENT_PASS}&senderid=${process.env.SMS_CLIENT_SENDERID}&dest_mobileno=91${data.doneeContact}&tempid=${process.env.SMS_CLIENT_GIFT_TOKEN}&message=${message}&response=Y&messagetype=TXT`)
+    .then(response => {return true;})
+    .catch(err => {console.log("An error occured - ", err); return false});
+  }
+  catch(err){
+    console.log(err);
+    return false;
+  }
+
+};
+
 //booking utilities
 
 const checkUserExist = async (data) => {
@@ -462,6 +484,7 @@ app.post("/confirmGiftPayment", async(req, res) => {
     // sms to donor with template
 
     // sms to donee with template
+    await doneeGift(data, coupon);
 
     // email to donor with template
 
@@ -1248,7 +1271,14 @@ app.post("/login", [
     }
     else{
       delete userCheck.userPassword;
-      res.status(200).json({code: 200, message: "LoggedIn Successful", data: userCheck});
+      const token = jwt.sign(
+        {
+          data: userCheck.contact + userCheck.dob
+        },
+        process.env.JSON_USER_KEY,
+        {expiresIn: '1h'}
+      );
+      res.status(200).json({code: 200, message: "LoggedIn Successful", data: userCheck, token});
     }
   } 
   catch (e) {
@@ -2345,7 +2375,7 @@ app.delete("/admin/deleteBlog", [
 app.post("/giftCoupon", async (req,res)=>{
     try{
         const verifyCoupon =  await client.query(`SELECT "giftedTestList" ,"couponAmount" , "couponCode" FROM "aptgifts" WHERE "couponCode" = $1 AND "isValid" = 'true' `,[req.body.coupon])
-        console.log(verifyCoupon)
+        console.log(verifyCoupon);
         if(verifyCoupon.rows.length > 0) {
             res.json({
                 code:200,

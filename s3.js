@@ -42,7 +42,7 @@ async function deleteFile(file){
         Key: `${file}`
     };
 
-    return s3.deleteObject(deleteParams, function(err, data){
+    return (s3.deleteObject(deleteParams, function(err, data){
         if(err) {
             // console.log("Error S3 - ", err);
             return err;
@@ -51,7 +51,7 @@ async function deleteFile(file){
             // console.log("Data S3 - ", data);
             return data;
         };
-    });
+    }));
 }
 
 exports.uploadFile = uploadFile;
